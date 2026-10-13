@@ -1,0 +1,7 @@
+.env
+data/
+*.db
+*.db-*
+*.exe
+/keshk
+keshk-rpi5-arm64

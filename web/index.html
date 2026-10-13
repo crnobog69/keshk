@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="sr-Cyrl" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Keshk — месечни буџет</title>
+  <meta name="description" content="Keshk – минималистичка апликација за праћење месечног буџета, Кешкића и трошкова у више валута.">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="theme-color" content="#09090b">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    (function () {
+      var t = localStorage.getItem('keshk-theme') || 'dark';
+      document.documentElement.classList.toggle('dark', t === 'dark');
+    })();
+  </script>
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <!-- ============ Splash ============ -->
+  <div id="splash" class="splash" aria-hidden="true">
+    <span class="brand-mark brand-mark-lg pulse"><i data-lucide="wallet"></i></span>
+  </div>
+
+  <!-- ============ Пријава ============ -->
+  <main id="login-view" class="login" hidden>
+    <form id="login-form" class="card login-card" autocomplete="on" novalidate>
+      <div class="brand brand-lg">
+        <span class="brand-mark"><i data-lucide="wallet"></i></span>
+        <span>Keshk</span>
+      </div>
+      <div class="login-copy">
+        <h1>Добродошао назад</h1>
+        <p class="muted">Пријави се да пратиш своје Кешкиће.</p>
+      </div>
+      <label class="field">
+        <span class="label">Корисничко име</span>
+        <input id="login-username" class="input" name="username" autocomplete="username" required>
+      </label>
+      <label class="field">
+        <span class="label">Лозинка</span>
+        <input id="login-password" class="input" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="form-error" role="alert" hidden></p>
+      <button id="login-submit" class="btn btn-primary btn-block btn-lg" type="submit">
+        <span>Пријави се</span><i data-lucide="arrow-right"></i>
+      </button>
+    </form>
+    <footer class="site-footer">
+      <a href="https://git.crnbg.org/vltc/keshk" target="_blank" rel="noopener noreferrer"><i data-lucide="git-branch"></i><span>Made by vltc</span></a>
+    </footer>
+  </main>
+
+  <!-- ============ Апликација ============ -->
+  <div id="app-view" hidden>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a class="brand" href="/" aria-label="Keshk почетна">
+          <span class="brand-mark"><i data-lucide="wallet"></i></span>
+          <span>Keshk</span>
+        </a>
+        <div class="topbar-actions">
+          <button id="btn-new" class="btn btn-primary btn-sm" type="button" aria-label="Нова трансакција">
+            <i data-lucide="plus"></i><span>Нова</span><kbd>N</kbd>
+          </button>
+          <button id="theme-toggle" class="btn btn-ghost btn-icon" type="button" aria-label="Промени тему" title="Промени тему">
+            <i data-lucide="sun" class="icon-sun"></i><i data-lucide="moon" class="icon-moon"></i>
+          </button>
+          <button id="logout-btn" class="btn btn-ghost btn-icon" type="button" aria-label="Одјави се" title="Одјави се">
+            <i data-lucide="log-out"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container main">
+      <h1 class="sr-only">Месечни буџет</h1>
+
+      <!-- Месечни мењач -->
+      <nav class="month-switch" aria-label="Избор месеца">
+        <button id="month-prev" class="btn btn-outline btn-icon" type="button" aria-label="Претходни месец"><i data-lucide="chevron-left"></i></button>
+        <button id="month-label" class="month-label" type="button" title="Иди на текући месец">
+          <i data-lucide="calendar"></i><span id="month-text">—</span>
+        </button>
+        <button id="month-next" class="btn btn-outline btn-icon" type="button" aria-label="Следећи месец"><i data-lucide="chevron-right"></i></button>
+      </nav>
+
+      <!-- Херо преглед -->
+      <section id="hero" class="card hero">
+        <div class="hero-top">
+          <span class="eyebrow">Укупно преостало</span>
+          <span id="rate-badge" class="badge badge-outline" title="Тренутни курс">
+            <i data-lucide="arrow-left-right"></i><span id="rate-text">курс…</span>
+          </span>
+        </div>
+        <div class="balance" aria-live="polite">
+          <span id="balance-value">0,00</span><span class="balance-cur">RSD</span>
+        </div>
+        <p id="balance-hint" class="hint">&nbsp;</p>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="progress">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <div class="progress-meta">
+          <span id="progress-spent">—</span>
+          <span id="progress-total">—</span>
+        </div>
+      </section>
+
+      <!-- Секција Кешкићи -->
+      <section class="card keshkici-section" aria-labelledby="keshkici-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="keshkici-heading">Кешкићи овог месеца</h2>
+            <p class="muted small">Сваки Кешкић има свој буџет, а трошкове додељујеш одређеном Кешкићу.</p>
+          </div>
+          <button id="add-keshkic-top" class="btn btn-outline btn-sm" type="button">
+            <i data-lucide="plus"></i><span>Додај Кешкић</span>
+          </button>
+        </div>
+        <div id="keshkici-grid" class="keshkici-grid"></div>
+      </section>
+
+      <!-- Главни распоред: Трошкови + Историја -->
+      <section class="layout">
+        <div class="card list-card">
+          <div class="card-head">
+            <div>
+              <h2>Трошкови</h2>
+              <div id="filter-indicator" class="filter-indicator" hidden>
+                <span>Филтрирано по: <b id="filter-name">—</b></span>
+                <button id="filter-clear" class="btn btn-ghost btn-xs" type="button"><i data-lucide="x"></i>Прикажи све</button>
+              </div>
+            </div>
+            <button id="add-tx-card" class="btn btn-outline btn-sm" type="button">
+              <i data-lucide="plus"></i><span>Нови трошак</span>
+            </button>
+          </div>
+          <div id="tx-list" class="tx-list"></div>
+        </div>
+
+        <aside class="card history-card" aria-label="Историја">
+          <div class="card-head">
+            <h2>Последњих 6 месеци</h2>
+          </div>
+          <div id="history" class="history"></div>
+          <div class="legend">
+            <span><i class="dot dot-spent"></i>Потрошено</span>
+            <span><i class="dot dot-avail"></i>Кешкићи</span>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a href="https://git.crnbg.org/vltc/keshk" target="_blank" rel="noopener noreferrer"><i data-lucide="git-branch"></i><span>Made by vltc</span></a>
+    </footer>
+
+    <!-- Мобилно брзо дугме -->
+    <button id="fab" class="fab" type="button" aria-label="Нова трансакција" title="Нова трансакција">
+      <i data-lucide="plus"></i>
+    </button>
+  </div>
+
+  <!-- ============ Јединствени дијалог: Нова трансакција ============ -->
+  <dialog id="tx-dialog" class="dialog" aria-labelledby="modal-title">
+    <form id="tx-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="modal-title">Нова трансакција</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+
+      <!-- Преклопник Трошак / Кешкић -->
+      <div class="segmented" id="modal-segmented" role="tablist">
+        <input type="radio" name="modal-kind" id="kind-expense" value="expense" checked>
+        <label for="kind-expense"><i data-lucide="arrow-up-right"></i><span>Трошак</span></label>
+        <input type="radio" name="modal-kind" id="kind-keshkic" value="keshkic">
+        <label for="kind-keshkic"><i data-lucide="wallet"></i><span>Кешкић</span></label>
+      </div>
+
+      <!-- Поље: Избор Кешкића (видљиво само за Трошак) -->
+      <label class="field" id="field-keshkic-select">
+        <span class="label">Из ког Кешкића се троши?</span>
+        <select id="tx-keshkic" class="input select" required></select>
+      </label>
+
+      <!-- Назив Кешкића (видљиво само за Кешкић) -->
+      <label class="field" id="field-keshkic-title" hidden>
+        <span class="label">Назив Кешкића</span>
+        <input id="keshkic-title" class="input" placeholder="нпр. Мама, За игре, Уштеђевина…" maxlength="60" autocomplete="off">
+      </label>
+
+      <!-- Износ + Валута -->
+      <div class="field">
+        <label class="label" for="tx-amount" id="label-amount">Износ</label>
+        <div class="amount-row">
+          <input id="tx-amount" class="input input-amount" inputmode="decimal" placeholder="0,00" autocomplete="off" required>
+          <div class="currency-pills" role="radiogroup" aria-label="Валута">
+            <input type="radio" name="currency" id="cur-RSD" value="RSD" checked><label for="cur-RSD">RSD</label>
+            <input type="radio" name="currency" id="cur-EUR" value="EUR"><label for="cur-EUR">€</label>
+            <input type="radio" name="currency" id="cur-USD" value="USD"><label for="cur-USD">$</label>
+          </div>
+        </div>
+        <span class="field-hint"><i data-lucide="info"></i>Тачка за хиљаде, зарез за децимале — нпр. <b>500.000,00</b> или <b>12,50</b></span>
+      </div>
+
+      <!-- Курсна конверзија за стране валуте -->
+      <div id="fx-row" class="fx-row" hidden>
+        <div class="fx-rate">
+          <span class="muted">1 <span id="fx-cur">EUR</span> =</span>
+          <input id="tx-rate" class="input input-sm" inputmode="decimal" aria-label="Курс">
+          <span class="muted">RSD</span>
+        </div>
+        <div class="fx-result"><i data-lucide="equal-approximately"></i><span id="fx-result">0,00 RSD</span></div>
+      </div>
+
+      <!-- Опис трошка (видљиво само за Трошак) -->
+      <label class="field" id="field-tx-title">
+        <span class="label">Опис</span>
+        <input id="tx-title" class="input" placeholder="нпр. кафа, Steam, превоз…" maxlength="120" autocomplete="off">
+      </label>
+
+      <!-- Датум (видљиво само за Трошак) -->
+      <label class="field" id="field-tx-date">
+        <span class="label">Датум</span>
+        <input id="tx-date" class="input" type="date" required>
+      </label>
+
+      <!-- Подразумевани Кешкић чекбокс (видљиво само за Кешкић) -->
+      <label class="checkbox-row" id="field-keshkic-default" hidden>
+        <input type="checkbox" id="keshkic-is-default">
+        <span>Постави као подразумевани Кешкић за овај месец</span>
+      </label>
+
+      <p id="tx-error" class="form-error" role="alert" hidden></p>
+
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="tx-submit" class="btn btn-primary" type="submit">
+          <i data-lucide="check"></i><span id="tx-submit-label">Сачувај трошак</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toaster" class="toaster" aria-live="polite"></div>
+</body>
+</html>

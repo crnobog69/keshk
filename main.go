@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"io/fs"
 	"log"
 
@@ -58,6 +61,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Верзија асета = хеш садржаја, да прегледач никада не користи застарели CSS/JS из кеша
+	h256 := sha256.New()
+	for _, name := range []string{"web/styles.css", "web/app.js"} {
+		b, _ := webFS.ReadFile(name)
+		h256.Write(b)
+	}
+	ver := hex.EncodeToString(h256.Sum(nil))[:10]
+	indexHTML = bytes.ReplaceAll(indexHTML, []byte(`"/styles.css"`), []byte(`"/styles.css?v=`+ver+`"`))
+	indexHTML = bytes.ReplaceAll(indexHTML, []byte(`"/app.js"`), []byte(`"/app.js?v=`+ver+`"`))
 	sendIndex := func(c fiber.Ctx) error {
 		c.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 		c.Set("Pragma", "no-cache")

@@ -690,3 +690,20 @@ html:not(.dark) .icon-moon { display: none; }
 .site-footer a:hover { color: hsl(var(--foreground)); }
 .login .site-footer { padding: 1.5rem 1rem 0; }
 
+
+/* Scrollbar (minimal) */
+html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / .3); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / .55); background-clip: content-box; border: 2px solid transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Footer sticks to the bottom, no scroll needed on tall screens */
+#app-view { min-height: 100dvh; display: flex; flex-direction: column; }
+#app-view > .main { flex: 1 0 auto; }
+#app-view > .site-footer { padding: .75rem 1rem 1rem; }
+@media (max-width: 640px) { #app-view > .site-footer { padding-bottom: 5.5rem; } }
+
+#app-view > .main { padding-bottom: 1rem; align-content: start; }
+

@@ -28,19 +28,10 @@ func loadConfig() Config {
 		log.Println("[INFO] .env није пронађен, користим променљиве окружења")
 	}
 
-	username := strings.TrimSpace(os.Getenv("KESHK_USERNAME"))
-	if username == "" {
-		username = "admin"
-	}
-	password := os.Getenv("KESHK_PASSWORD")
-	if password == "" {
-		password = "keshk"
-	}
-
 	cfg := Config{
-		Username:     username,
-		Password:     password,
-		Port:         env("PORT", "6767"),
+		Username:     strings.TrimSpace(os.Getenv("KESHK_USERNAME")),
+		Password:     os.Getenv("KESHK_PASSWORD"),
+		Port:         env("PORT", "3000"),
 		DBPath:       env("DB_PATH", "data/keshk.db"),
 		DefaultKeshkic: envFloat("DEFAULT_KESHKIC", 5000),
 		CookieSecure: strings.EqualFold(env("COOKIE_SECURE", "false"), "true"),
@@ -50,6 +41,10 @@ func loadConfig() Config {
 			"EUR": envFloat("FALLBACK_EUR_RSD", 117.2),
 			"USD": envFloat("FALLBACK_USD_RSD", 100),
 		},
+	}
+
+	if cfg.Username == "" || cfg.Password == "" {
+		log.Fatal("[ERROR] KESHK_USERNAME и KESHK_PASSWORD морају бити постављени у .env")
 	}
 
 	if s := os.Getenv("SESSION_SECRET"); s != "" {

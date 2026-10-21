@@ -177,7 +177,10 @@ func (s *Store) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_tx_month ON transactions(month, date);
 	CREATE INDEX IF NOT EXISTS idx_tx_keshkic ON transactions(keshkic_id);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.migrateExtra()
 }
 
 // ---------------------------------------------------------------------

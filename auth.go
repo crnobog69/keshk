@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -20,20 +21,40 @@ const (
 )
 
 // Auth implements a tiny stateless session: cookie = "<expiry>.<hmac>".
+// If a password hash is stored in the DB (changed via Налог), it overrides .env.
 type Auth struct {
 	user   string
 	pass   string
 	secret []byte
 	secure bool
+
+	mu       sync.RWMutex
+	passHash string
 }
 
-func newAuth(cfg Config) *Auth {
-	return &Auth{user: cfg.Username, pass: cfg.Password, secret: cfg.Secret, secure: cfg.CookieSecure}
+func newAuth(cfg Config, passHash string) *Auth {
+	return &Auth{user: cfg.Username, pass: cfg.Password, secret: cfg.Secret, secure: cfg.CookieSecure, passHash: passHash}
+}
+
+func (a *Auth) setPasswordHash(h string) {
+	a.mu.Lock()
+	a.passHash = h
+	a.mu.Unlock()
+}
+
+func (a *Auth) currentHash() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.passHash
 }
 
 func (a *Auth) sign(exp int64) string {
 	mac := hmac.New(sha256.New, a.secret)
-	mac.Write([]byte(strconv.FormatInt(exp, 10) + "|" + a.user))
+	msg := strconv.FormatInt(exp, 10) + "|" + a.user
+	if ph := a.currentHash(); ph != "" {
+		msg += "|" + ph // промена лозинке поништава старе сесије
+	}
+	mac.Write([]byte(msg))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
@@ -58,7 +79,12 @@ func (a *Auth) verify(token string) bool {
 func (a *Auth) checkCredentials(user, pass string) bool {
 	hash := func(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
 	userOK := subtle.ConstantTimeCompare(hash(user), hash(a.user)) == 1
-	passOK := subtle.ConstantTimeCompare(hash(pass), hash(a.pass)) == 1
+	var passOK bool
+	if ph := a.currentHash(); ph != "" {
+		passOK = verifyPassword(ph, pass)
+	} else {
+		passOK = subtle.ConstantTimeCompare(hash(pass), hash(a.pass)) == 1
+	}
 	return userOK && passOK
 }
 

@@ -71,6 +71,12 @@
     editingTx: null,
     editingKeshkic: null,
     lastCurrency: localStorage.getItem('keshk-currency') || 'RSD',
+    // Account
+    account: null,
+    // Shopping lists
+    lists: [],
+    currentList: null,
+    editingList: null,
   };
 
   // ---------------------------------------------------------------
@@ -119,7 +125,11 @@
   }
 
   async function showApp(me) {
-    if (me && me.defaultKeshkic) state.defaultKeshkicVal = me.defaultKeshkic;
+    if (me) {
+      if (me.defaultKeshkic) state.defaultKeshkicVal = me.defaultKeshkic;
+      state.account = me;
+      updateTopbarAvatar();
+    }
     $('#splash').classList.add('is-hidden');
     $('#login-view').hidden = true;
     $('#app-view').hidden = false;
@@ -669,6 +679,379 @@
     document.documentElement.classList.toggle('dark', dark);
     localStorage.setItem('keshk-theme', dark ? 'dark' : 'light');
     $('meta[name="theme-color"]').setAttribute('content', dark ? '#09090b' : '#ffffff');
+    updateThemeLabel();
+  }
+  function updateThemeLabel() {
+    const el = $('#menu-theme-label');
+    if (el) el.textContent = document.documentElement.classList.contains('dark') ? 'Светла тема' : 'Тамна тема';
+  }
+
+  // ---------------------------------------------------------------
+  // Дропдаун Подешавања
+  // ---------------------------------------------------------------
+  function toggleSettingsMenu() {
+    const menu = $('#settings-menu');
+    const open = menu.hidden;
+    menu.hidden = !open;
+    if (open) {
+      updateThemeLabel();
+      icons();
+      const close = (e) => {
+        if (!e.target.closest('#settings-dropdown')) {
+          menu.hidden = true;
+          document.removeEventListener('click', close);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', close), 0);
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Налог (Аватар, име, лозинка)
+  // ---------------------------------------------------------------
+  function openAccountDialog() {
+    $('#settings-menu').hidden = true;
+    const d = $('#account-dialog');
+    const a = state.account || {};
+    $('#acct-display-name').value = a.displayName || '';
+    updateAvatarPreview(a.avatar || '');
+    $('#acct-error').hidden = true;
+    $('#pw-current').value = '';
+    $('#pw-next').value = '';
+    $('#pw-error').hidden = true;
+    d.showModal();
+    icons();
+  }
+
+  function updateTopbarAvatar() {
+    const el = $('#topbar-avatar');
+    if (!el) return;
+    const a = state.account || {};
+    if (a.avatar) {
+      el.innerHTML = `<img src="${a.avatar}" alt="Аватар">`;
+    } else {
+      el.innerHTML = '<i data-lucide="user"></i>';
+      icons();
+    }
+    const nameEl = $('#menu-user-name');
+    if (nameEl) {
+      nameEl.textContent = a.displayName || a.username || 'admin';
+    }
+    const handleEl = $('#menu-user-handle');
+    if (handleEl) {
+      handleEl.textContent = '@' + (a.username || 'admin');
+    }
+  }
+
+  function updateAvatarPreview(src) {
+    const el = $('#acct-avatar-preview');
+    if (src) {
+      el.innerHTML = `<img src="${src}" alt="Аватар">`;
+    } else {
+      el.innerHTML = '<i data-lucide="user" class="acct-avatar-placeholder"></i>';
+      icons();
+    }
+  }
+
+  async function saveAccount(e) {
+    e.preventDefault();
+    const err = $('#acct-error');
+    err.hidden = true;
+    const body = { displayName: $('#acct-display-name').value.trim() };
+    // If avatar was changed (stored in data attr)
+    const preview = $('#acct-avatar-preview');
+    if (preview.dataset.pending !== undefined) {
+      body.avatar = preview.dataset.pending;
+      delete preview.dataset.pending;
+    }
+    try {
+      state.account = await api('/api/account', { method: 'PUT', body });
+      updateTopbarAvatar();
+      toast('Налог ажуриран');
+      $('#account-dialog').close();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) { err.textContent = ex.message; err.hidden = false; }
+    }
+  }
+
+  async function changePassword(e) {
+    e.preventDefault();
+    const err = $('#pw-error');
+    err.hidden = true;
+    const current = $('#pw-current').value;
+    const next = $('#pw-next').value;
+    if (!current || !next) { err.textContent = 'Попуни оба поља.'; err.hidden = false; return; }
+    try {
+      await api('/api/account/password', { method: 'PUT', body: { current, next } });
+      toast('Лозинка промењена');
+      $('#pw-current').value = '';
+      $('#pw-next').value = '';
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) { err.textContent = ex.message; err.hidden = false; }
+    }
+  }
+
+  function handleAvatarFile(file) {
+    if (!file) return;
+    if (file.size > 600 * 1024) { toast('Слика је превелика (макс. 600KB)', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      updateAvatarPreview(dataUrl);
+      $('#acct-avatar-preview').dataset.pending = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ---------------------------------------------------------------
+  // Листе за куповину
+  // ---------------------------------------------------------------
+  function toggleListsPanel() {
+    const p = $('#lists-panel');
+    if (!p.hidden) { p.hidden = true; return; }
+    p.hidden = false;
+    loadLists();
+    icons();
+  }
+
+  async function loadLists() {
+    try {
+      state.lists = await api('/api/lists');
+      renderListCards();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  function renderListCards() {
+    const c = $('#lists-container');
+    const lists = state.lists || [];
+    if (!lists.length) {
+      c.innerHTML = `
+        <div class="lists-empty">
+          <span class="lists-empty-icon"><i data-lucide="list-checks"></i></span>
+          <p>Још немаш листу за куповину.</p>
+        </div>`;
+      icons();
+      return;
+    }
+    const todayStr = today();
+    c.innerHTML = lists.map((l, i) => {
+      const pct = l.itemCount > 0 ? Math.round((l.checkedCount / l.itemCount) * 100) : 0;
+      const dueLabel = l.dueDate
+        ? `<span class="sl-card-due${l.dueDate < todayStr && !l.txId ? ' is-overdue' : ''}">${l.dueDate}</span>`
+        : '<span class="sl-card-due">∞</span>';
+      const kLabel = l.keshkicTitle ? `<span class="k-pill"><i data-lucide="wallet"></i>${esc(l.keshkicTitle)}</span>` : '';
+      const charged = l.txId > 0;
+      return `
+        <div class="sl-card${charged ? ' is-charged' : ''}" data-list-id="${l.id}" style="animation-delay:${i * .04}s">
+          <div class="sl-card-head">
+            <div class="sl-card-title">${esc(l.title)}</div>
+            ${dueLabel}
+          </div>
+          <div class="sl-card-progress">
+            <div class="sl-card-progress-bar"><div class="sl-card-progress-fill" style="width:${pct}%"></div></div>
+            <span>${l.checkedCount}/${l.itemCount}</span>
+          </div>
+          <div class="sl-card-foot">
+            ${kLabel}
+            <span>${l.total > 0 ? money(l.total) : '—'}</span>
+          </div>
+        </div>`;
+    }).join('');
+    icons();
+  }
+
+  // --- Create / Edit list dialog ---
+  function openListDialog(list = null) {
+    state.editingList = list;
+    const d = $('#list-dialog');
+    $('#list-dialog-title').textContent = list ? 'Измени листу' : 'Нова листа';
+    $('#list-save-label').textContent = list ? 'Сачувај измене' : 'Сачувај';
+    $('#list-title').value = list ? list.title : '';
+    $('#list-due').value = list ? list.dueDate : '';
+    $('#list-error').hidden = true;
+    // Populate keshkic select
+    populateKeshkicSelect('#list-keshkic', list ? list.keshkicId : 0);
+    d.showModal();
+    icons();
+    setTimeout(() => $('#list-title').focus(), 60);
+  }
+
+  function populateKeshkicSelect(selector, selectedId) {
+    const select = $(selector);
+    const keshkici = state.data && state.data.summary ? (state.data.summary.keshkici || []).filter(k => !k.dropped) : [];
+    select.innerHTML = '<option value="0">— није изабран (подразумевани) —</option>' +
+      keshkici.map(k => `<option value="${k.id}">${esc(k.title)} (преостало: ${money(k.balance)})${k.isDefault ? ' [подразумевани]' : ''}</option>`).join('');
+    if (selectedId) select.value = String(selectedId);
+  }
+
+  async function saveList(e) {
+    e.preventDefault();
+    const err = $('#list-error');
+    err.hidden = true;
+    const title = $('#list-title').value.trim();
+    if (!title) { err.textContent = 'Унеси назив листе.'; err.hidden = false; return; }
+    const body = {
+      title,
+      keshkicId: Number($('#list-keshkic').value) || 0,
+      dueDate: $('#list-due').value || '',
+      currency: 'RSD',
+    };
+    try {
+      if (state.editingList) {
+        await api(`/api/lists/${state.editingList.id}`, { method: 'PUT', body });
+        toast('Листа измењена');
+      } else {
+        await api('/api/lists', { method: 'POST', body });
+        toast('Листа креирана');
+      }
+      $('#list-dialog').close();
+      await loadLists();
+      // Refresh detail if open
+      if (state.currentList && state.editingList && state.currentList.id === state.editingList.id) {
+        openListDetail(state.editingList.id);
+      }
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) { err.textContent = ex.message; err.hidden = false; }
+    }
+  }
+
+  // --- List detail dialog ---
+  async function openListDetail(id) {
+    try {
+      const l = await api(`/api/lists/${id}`);
+      state.currentList = l;
+      renderListDetail(l);
+      const d = $('#list-detail-dialog');
+      if (!d.open) d.showModal();
+      icons();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  function renderListDetail(l) {
+    $('#list-detail-title').textContent = l.title;
+    const kBadge = l.keshkicTitle ? `<span class="k-pill"><i data-lucide="wallet"></i>${esc(l.keshkicTitle)}</span>` : '';
+    const dueLabel = l.dueDate ? l.dueDate : '∞';
+    const createdShort = l.createdAt ? l.createdAt.split('T')[0] : '—';
+    $('#list-detail-meta').innerHTML = `${kBadge} <span>Креирано: ${createdShort}</span> <span>Рок: ${dueLabel}</span>`;
+
+    // Items
+    const items = l.items || [];
+    const el = $('#list-detail-items');
+    if (!items.length) {
+      el.innerHTML = '<p class="muted small" style="padding:.75rem .5rem;text-align:center;">Још нема ставки.</p>';
+    } else {
+      el.innerHTML = items.map(it => {
+        const priceLabel = it.price != null ? `<span class="li-item-price">${nf.format(round2(it.price))}</span>` : '';
+        return `
+          <div class="li-item${it.checked ? ' is-checked' : ''}" data-item-id="${it.id}">
+            <input type="checkbox" ${it.checked ? 'checked' : ''} data-toggle-item="${it.id}">
+            <span class="li-item-name">${esc(it.name)}</span>
+            ${priceLabel}
+            <button class="li-item-delete" type="button" data-delete-item="${it.id}" aria-label="Обриши"><i data-lucide="x"></i></button>
+          </div>`;
+      }).join('');
+    }
+
+    // Summary
+    const sum = $('#list-detail-summary');
+    sum.innerHTML = `
+      <span class="muted">Штиклирано: ${l.checkedCount}/${l.itemCount}</span>
+      <span>Укупно: ${money(l.total)}${l.totalAll > l.total ? ` <span class="muted">(све: ${money(l.totalAll)})</span>` : ''}</span>`;
+
+    // Charge buttons
+    $('#list-charge-btn').hidden = l.txId > 0;
+    $('#list-uncharge-btn').hidden = !(l.txId > 0);
+    icons();
+  }
+
+  async function toggleItem(listId, itemId, item, checked) {
+    try {
+      const body = { name: item.name, price: item.price, checked };
+      await api(`/api/lists/${listId}/items/${itemId}`, { method: 'PUT', body });
+      await refreshListDetail(listId);
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function addItemToList(e) {
+    e.preventDefault();
+    if (!state.currentList) return;
+    const name = $('#add-item-name').value.trim();
+    if (!name) return;
+    const priceRaw = parseAmount($('#add-item-price').value);
+    const price = priceRaw > 0 ? priceRaw : null;
+    try {
+      await api(`/api/lists/${state.currentList.id}/items`, { method: 'POST', body: { name, price } });
+      $('#add-item-name').value = '';
+      $('#add-item-price').value = '';
+      await refreshListDetail(state.currentList.id);
+      setTimeout(() => $('#add-item-name').focus(), 60);
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function deleteItem(listId, itemId) {
+    try {
+      await api(`/api/lists/${listId}/items/${itemId}`, { method: 'DELETE' });
+      await refreshListDetail(listId);
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function chargeList() {
+    if (!state.currentList) return;
+    try {
+      await api(`/api/lists/${state.currentList.id}/charge`, { method: 'POST' });
+      toast('Одузето од Кешкића');
+      await refreshListDetail(state.currentList.id);
+      await load();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function unchargeList() {
+    if (!state.currentList) return;
+    try {
+      await api(`/api/lists/${state.currentList.id}/charge`, { method: 'DELETE' });
+      toast('Одузимање поништено');
+      await refreshListDetail(state.currentList.id);
+      await load();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function deleteList() {
+    if (!state.currentList) return;
+    try {
+      await api(`/api/lists/${state.currentList.id}`, { method: 'DELETE' });
+      toast('Листа обрисана');
+      $('#list-detail-dialog').close();
+      state.currentList = null;
+      await loadLists();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function refreshListDetail(id) {
+    try {
+      const l = await api(`/api/lists/${id}`);
+      state.currentList = l;
+      renderListDetail(l);
+      // Also refresh panel cards
+      await loadLists();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
   }
 
   // ---------------------------------------------------------------
@@ -694,12 +1077,55 @@
       }
     });
 
-    $('#logout-btn').addEventListener('click', async () => {
+    // Подешавања дропдаун
+    $('#settings-trigger').addEventListener('click', toggleSettingsMenu);
+    $('#menu-theme').addEventListener('click', () => { toggleTheme(); toggleSettingsMenu(); });
+    $('#menu-logout').addEventListener('click', async () => {
+      $('#settings-menu').hidden = true;
       await api('/api/logout', { method: 'POST' }).catch(() => {});
       showLogin();
     });
+    $('#menu-account').addEventListener('click', openAccountDialog);
 
-    $('#theme-toggle').addEventListener('click', toggleTheme);
+    // Налог
+    $('#account-form').addEventListener('submit', saveAccount);
+    $('#password-form').addEventListener('submit', changePassword);
+    $('#acct-avatar-input').addEventListener('change', (e) => handleAvatarFile(e.target.files[0]));
+    $('#acct-avatar-remove').addEventListener('click', () => {
+      updateAvatarPreview('');
+      $('#acct-avatar-preview').dataset.pending = '';
+    });
+
+    // Листе
+    $('#btn-lists').addEventListener('click', toggleListsPanel);
+    $$('[data-close-lists]').forEach(b => b.addEventListener('click', () => { $('#lists-panel').hidden = true; }));
+    $('#btn-new-list').addEventListener('click', () => openListDialog());
+    $('#list-form').addEventListener('submit', saveList);
+    $('#lists-container').addEventListener('click', (e) => {
+      const card = e.target.closest('.sl-card');
+      if (card) openListDetail(Number(card.dataset.listId));
+    });
+
+    // Детаљ листе
+    $('#add-item-form').addEventListener('submit', addItemToList);
+    $('#list-detail-items').addEventListener('change', (e) => {
+      const cb = e.target.closest('[data-toggle-item]');
+      if (!cb || !state.currentList) return;
+      const itemId = Number(cb.dataset.toggleItem);
+      const item = (state.currentList.items || []).find(i => i.id === itemId);
+      if (item) toggleItem(state.currentList.id, itemId, item, cb.checked);
+    });
+    $('#list-detail-items').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-delete-item]');
+      if (btn && state.currentList) deleteItem(state.currentList.id, Number(btn.dataset.deleteItem));
+    });
+    $('#list-charge-btn').addEventListener('click', chargeList);
+    $('#list-uncharge-btn').addEventListener('click', unchargeList);
+    $('#list-delete-btn').addEventListener('click', deleteList);
+    $('#list-edit-btn').addEventListener('click', () => {
+      if (state.currentList) openListDialog(state.currentList);
+    });
+
     $('#month-prev').addEventListener('click', () => goMonth(shiftMonth(state.month, -1)));
     $('#month-next').addEventListener('click', () => goMonth(shiftMonth(state.month, 1)));
     $('#month-label').addEventListener('click', () => goMonth(currentMonth()));
@@ -804,11 +1230,18 @@
 
     // Пречице на тастатури
     document.addEventListener('keydown', (e) => {
-      if ($('#app-view').hidden || document.querySelector('dialog[open]')) return;
+      if ($('#app-view').hidden) return;
       if (e.target.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Allow Escape to close lists panel
+      if (e.key === 'Escape' && !$('#lists-panel').hidden) {
+        $('#lists-panel').hidden = true;
+        return;
+      }
+      if (document.querySelector('dialog[open]')) return;
       const k = e.key.toLowerCase();
       if (k === 'n' || k === 'н') { e.preventDefault(); openModal('expense'); }
       else if (k === 'k' || k === 'к') { e.preventDefault(); openModal('keshkic'); }
+      else if (k === 'l' || k === 'л') { e.preventDefault(); toggleListsPanel(); }
       else if (e.key === 'ArrowLeft') goMonth(shiftMonth(state.month, -1));
       else if (e.key === 'ArrowRight') goMonth(shiftMonth(state.month, 1));
       else if (k === 't' || k === 'т') goMonth(currentMonth());

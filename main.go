@@ -22,11 +22,17 @@ func main() {
 
 	store, err := openStore(cfg.DBPath)
 	if err != nil {
-		log.Fatalf("❌ база: %v", err)
+		log.Fatalf("[ERROR] база: %v", err)
 	}
 	defer store.Close()
 
-	h := &Handlers{cfg: cfg, store: store, rates: newRates(cfg.FallbackRates), auth: newAuth(cfg)}
+	if cfg.ResetPassword {
+		if err := store.SetSetting(settingPassHash, ""); err == nil {
+			log.Println("[INFO] Лозинка враћена на вредност из .env (KESHK_RESET_PASSWORD)")
+		}
+	}
+
+	h := &Handlers{cfg: cfg, store: store, rates: newRates(cfg.FallbackRates), auth: newAuth(cfg, store.GetSetting(settingPassHash))}
 
 	app := fiber.New(fiber.Config{AppName: "Keshk"})
 	app.Use(recoverer.New())
@@ -53,6 +59,22 @@ func main() {
 	api.Post("/transactions", h.CreateTx)
 	api.Put("/transactions/:id", h.UpdateTx)
 	api.Delete("/transactions/:id", h.DeleteTx)
+
+	// Налог
+	api.Put("/account", h.UpdateAccount)
+	api.Put("/account/password", h.ChangePassword)
+
+	// Листе за куповину
+	api.Get("/lists", h.ListLists)
+	api.Post("/lists", h.CreateList)
+	api.Get("/lists/:id", h.GetList)
+	api.Put("/lists/:id", h.UpdateList)
+	api.Delete("/lists/:id", h.DeleteList)
+	api.Post("/lists/:id/items", h.AddItem)
+	api.Put("/lists/:id/items/:itemId", h.UpdateItem)
+	api.Delete("/lists/:id/items/:itemId", h.DeleteItem)
+	api.Post("/lists/:id/charge", h.ChargeList)
+	api.Delete("/lists/:id/charge", h.UnchargeList)
 	api.Use(func(c fiber.Ctx) error {
 		return fail(c, fiber.StatusNotFound, "Рута не постоји")
 	})

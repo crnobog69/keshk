@@ -19,12 +19,13 @@ type Config struct {
 	DBPath        string
 	DefaultKeshkic float64 // предлог износа за месечни Кешкић
 	CookieSecure  bool
+	ResetPassword bool               // KESHK_RESET_PASSWORD=true брише лозинку сачувану у бази
 	FallbackRates map[string]float64 // RSD per 1 unit of currency
 }
 
 func loadConfig() Config {
 	if err := godotenv.Load(); err != nil {
-		log.Println("ℹ️  .env није пронађен, користим променљиве окружења")
+		log.Println("[INFO] .env није пронађен, користим променљиве окружења")
 	}
 
 	cfg := Config{
@@ -34,6 +35,7 @@ func loadConfig() Config {
 		DBPath:       env("DB_PATH", "data/keshk.db"),
 		DefaultKeshkic: envFloat("DEFAULT_KESHKIC", 5000),
 		CookieSecure: strings.EqualFold(env("COOKIE_SECURE", "false"), "true"),
+		ResetPassword: strings.EqualFold(env("KESHK_RESET_PASSWORD", "false"), "true"),
 		FallbackRates: map[string]float64{
 			"RSD": 1,
 			"EUR": envFloat("FALLBACK_EUR_RSD", 117.2),
@@ -42,7 +44,7 @@ func loadConfig() Config {
 	}
 
 	if cfg.Username == "" || cfg.Password == "" {
-		log.Fatal("❌ KESHK_USERNAME и KESHK_PASSWORD морају бити постављени у .env")
+		log.Fatal("[ERROR] KESHK_USERNAME и KESHK_PASSWORD морају бити постављени у .env")
 	}
 
 	if s := os.Getenv("SESSION_SECRET"); s != "" {
@@ -51,7 +53,7 @@ func loadConfig() Config {
 		b := make([]byte, 32)
 		_, _ = rand.Read(b)
 		cfg.Secret = b
-		log.Println("⚠️  SESSION_SECRET није постављен — сесије ће се поништити при рестарту сервера")
+		log.Println("[WARN] SESSION_SECRET није постављен — сесије ће се поништити при рестарту сервера")
 	}
 
 	return cfg
@@ -71,7 +73,7 @@ func envFloat(key string, def float64) float64 {
 	}
 	f, err := strconv.ParseFloat(strings.ReplaceAll(v, ",", "."), 64)
 	if err != nil || f <= 0 {
-		log.Printf("⚠️  %s=%q није исправан број, користим %v", key, v, def)
+		log.Printf("[WARN] %s=%q није исправан број, користим %v", key, v, def)
 		return def
 	}
 	return f

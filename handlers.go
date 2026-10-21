@@ -54,7 +54,7 @@ func fail(c fiber.Ctx, status int, msg string) error {
 }
 
 func internal(c fiber.Ctx, err error) error {
-	log.Printf("❌ %s %s: %v", c.Method(), c.Path(), err)
+	log.Printf("[ERROR] %s %s: %v", c.Method(), c.Path(), err)
 	return fail(c, fiber.StatusInternalServerError, "Грешка на серверу")
 }
 
@@ -83,12 +83,6 @@ func (h *Handlers) Logout(c fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *Handlers) Me(c fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"username":       h.cfg.Username,
-		"defaultKeshkic": h.cfg.DefaultKeshkic,
-	})
-}
 
 // ---------------------------------------------------------------------
 // Months & Summary

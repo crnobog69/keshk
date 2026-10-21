@@ -73,12 +73,33 @@
           <button id="btn-new" class="btn btn-primary btn-sm" type="button" aria-label="Нова трансакција">
             <i data-lucide="plus"></i><span>Нова</span><kbd>N</kbd>
           </button>
-          <button id="theme-toggle" class="btn btn-ghost btn-icon" type="button" aria-label="Промени тему" title="Промени тему">
-            <i data-lucide="sun" class="icon-sun"></i><i data-lucide="moon" class="icon-moon"></i>
+          <button id="btn-lists" class="btn btn-outline btn-sm" type="button" aria-label="Листе за куповину">
+            <i data-lucide="list-checks"></i><span class="hide-mobile">Листе</span><kbd>L</kbd>
           </button>
-          <button id="logout-btn" class="btn btn-ghost btn-icon" type="button" aria-label="Одјави се" title="Одјави се">
-            <i data-lucide="log-out"></i>
-          </button>
+          <div class="dropdown" id="settings-dropdown">
+            <button id="settings-trigger" class="topbar-avatar-btn" type="button" aria-label="Налог и подешавања" title="Налог и подешавања">
+              <span class="topbar-avatar" id="topbar-avatar">
+                <i data-lucide="user"></i>
+              </span>
+            </button>
+            <div class="dropdown-menu" id="settings-menu" hidden>
+              <div class="dropdown-header">
+                <span class="dropdown-user-name" id="menu-user-name">admin</span>
+                <span class="dropdown-user-handle" id="menu-user-handle">@admin</span>
+              </div>
+              <div class="dropdown-sep"></div>
+              <button class="dropdown-item" type="button" id="menu-account">
+                <i data-lucide="user"></i><span>Налог</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-theme">
+                <i data-lucide="sun" class="icon-sun"></i><i data-lucide="moon" class="icon-moon"></i><span id="menu-theme-label">Светла тема</span>
+              </button>
+              <div class="dropdown-sep"></div>
+              <button class="dropdown-item is-danger" type="button" id="menu-logout">
+                <i data-lucide="log-out"></i><span>Одјави се</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -250,6 +271,125 @@
         </button>
       </div>
     </form>
+  </dialog>
+
+  <!-- ============ Дијалог: Налог ============ -->
+  <dialog id="account-dialog" class="dialog dialog-sm" aria-labelledby="account-title">
+    <form id="account-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="account-title">Налог</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <div class="acct-avatar-row">
+        <div class="acct-avatar" id="acct-avatar-preview">
+          <i data-lucide="user" class="acct-avatar-placeholder"></i>
+        </div>
+        <div class="acct-avatar-actions">
+          <label class="btn btn-outline btn-sm" for="acct-avatar-input">
+            <i data-lucide="upload"></i><span>Промени слику</span>
+          </label>
+          <button class="btn btn-ghost btn-sm" type="button" id="acct-avatar-remove"><i data-lucide="trash-2"></i><span>Уклони</span></button>
+          <input type="file" id="acct-avatar-input" accept="image/jpeg,image/png,image/webp" hidden>
+        </div>
+      </div>
+      <label class="field">
+        <span class="label">Име за приказ</span>
+        <input id="acct-display-name" class="input" placeholder="нпр. Милош" maxlength="40" autocomplete="off">
+      </label>
+      <p id="acct-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="acct-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span>Сачувај</span></button>
+      </div>
+    </form>
+    <div class="dialog-section">
+      <h4 class="dialog-section-title">Промена лозинке</h4>
+      <form id="password-form" class="dialog-body" novalidate>
+        <label class="field">
+          <span class="label">Тренутна лозинка</span>
+          <input id="pw-current" class="input" type="password" autocomplete="current-password">
+        </label>
+        <label class="field">
+          <span class="label">Нова лозинка</span>
+          <input id="pw-next" class="input" type="password" autocomplete="new-password" minlength="6">
+        </label>
+        <p id="pw-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-foot">
+          <button id="pw-save" class="btn btn-primary btn-sm" type="submit"><i data-lucide="key"></i><span>Промени лозинку</span></button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- ============ Панел: Листе за куповину ============ -->
+  <div id="lists-panel" class="lists-panel" hidden>
+    <div class="lists-panel-backdrop" data-close-lists></div>
+    <div class="lists-panel-body">
+      <div class="lists-panel-head">
+        <h3><i data-lucide="list-checks"></i><span>Листе за куповину</span></h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close-lists aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <div class="lists-panel-actions">
+        <button id="btn-new-list" class="btn btn-primary btn-sm btn-block" type="button">
+          <i data-lucide="plus"></i><span>Нова листа</span>
+        </button>
+      </div>
+      <div id="lists-container" class="lists-container"></div>
+    </div>
+  </div>
+
+  <!-- ============ Дијалог: Нова/Измена листе ============ -->
+  <dialog id="list-dialog" class="dialog dialog-sm" aria-labelledby="list-dialog-title">
+    <form id="list-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="list-dialog-title">Нова листа</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <label class="field">
+        <span class="label">Назив листе</span>
+        <input id="list-title" class="input" placeholder="нпр. Недељна куповина" maxlength="80" autocomplete="off" required>
+      </label>
+      <label class="field">
+        <span class="label">Кешкић</span>
+        <select id="list-keshkic" class="input select"></select>
+      </label>
+      <label class="field">
+        <span class="label">Рок (опционо)</span>
+        <input id="list-due" class="input" type="date">
+      </label>
+      <p id="list-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="list-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span id="list-save-label">Сачувај</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ Дијалог: Детаљ листе ============ -->
+  <dialog id="list-detail-dialog" class="dialog" aria-labelledby="list-detail-title">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <div>
+          <h3 id="list-detail-title">—</h3>
+          <div class="list-detail-meta" id="list-detail-meta"></div>
+        </div>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <div id="list-detail-items" class="list-items"></div>
+      <form id="add-item-form" class="add-item-row" novalidate>
+        <input id="add-item-name" class="input" placeholder="Додај производ…" maxlength="120" autocomplete="off">
+        <input id="add-item-price" class="input input-sm" inputmode="decimal" placeholder="Цена">
+        <button class="btn btn-primary btn-icon btn-sm" type="submit" aria-label="Додај"><i data-lucide="plus"></i></button>
+      </form>
+      <div class="list-detail-summary" id="list-detail-summary"></div>
+      <div class="dialog-foot">
+        <button id="list-edit-btn" class="btn btn-outline btn-sm" type="button"><i data-lucide="pencil"></i><span>Измени</span></button>
+        <button id="list-delete-btn" class="btn btn-outline btn-sm" type="button"><i data-lucide="trash-2"></i><span>Обриши</span></button>
+        <div style="flex:1"></div>
+        <button id="list-uncharge-btn" class="btn btn-outline btn-sm" type="button" hidden><i data-lucide="undo-2"></i><span>Поништи одузимање</span></button>
+        <button id="list-charge-btn" class="btn btn-primary btn-sm" type="button"><i data-lucide="wallet"></i><span>Одузми од Кешкића</span></button>
+      </div>
+    </div>
   </dialog>
 
   <div id="toaster" class="toaster" aria-live="polite"></div>

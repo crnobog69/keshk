@@ -728,7 +728,7 @@
     if (!el) return;
     const a = state.account || {};
     if (a.avatar) {
-      el.innerHTML = `<img src="${a.avatar}" alt="Аватар">`;
+      el.innerHTML = `<img src="${esc(a.avatar)}" alt="Аватар">`;
     } else {
       el.innerHTML = '<i data-lucide="user"></i>';
       icons();
@@ -746,7 +746,7 @@
   function updateAvatarPreview(src) {
     const el = $('#acct-avatar-preview');
     if (src) {
-      el.innerHTML = `<img src="${src}" alt="Аватар">`;
+      el.innerHTML = `<img src="${esc(src)}" alt="Аватар">`;
     } else {
       el.innerHTML = '<i data-lucide="user" class="acct-avatar-placeholder"></i>';
       icons();

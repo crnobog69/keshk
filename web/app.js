@@ -134,7 +134,7 @@
     $('#login-view').hidden = true;
     $('#app-view').hidden = false;
     await Promise.all([loadRates(), loadHistory()]);
-    await load();
+    await routeTo(window.location.pathname);
   }
 
   // ---------------------------------------------------------------
@@ -804,62 +804,196 @@
   }
 
   // ---------------------------------------------------------------
-  // Листе за куповину
+  // Навигација и рутирање (/ и /liste и /liste/:id)
   // ---------------------------------------------------------------
-  function toggleListsPanel() {
-    const p = $('#lists-panel');
-    if (!p.hidden) { p.hidden = true; return; }
-    p.hidden = false;
-    loadLists();
-    icons();
+  function navigate(path, push = true) {
+    if (push && window.location.pathname !== path) {
+      history.pushState(null, '', path);
+    }
+    routeTo(path);
   }
 
-  async function loadLists() {
+  async function routeTo(path) {
+    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+
+    const vDash = $('#view-dashboard');
+    const vLists = $('#view-lists');
+    const vDetail = $('#view-list-detail');
+    const btnLists = $('#btn-lists');
+
+    if (path === '/liste') {
+      if (vDash) vDash.hidden = true;
+      if (vDetail) vDetail.hidden = true;
+      if (vLists) vLists.hidden = false;
+      if (btnLists) btnLists.classList.add('btn-primary');
+      if (btnLists) btnLists.classList.remove('btn-outline');
+      document.title = 'Keshk — Листе за куповину';
+      await loadListsPage();
+    } else if (path.startsWith('/liste/')) {
+      const id = path.slice('/liste/'.length);
+      if (vDash) vDash.hidden = true;
+      if (vLists) vLists.hidden = true;
+      if (vDetail) vDetail.hidden = false;
+      if (btnLists) btnLists.classList.add('btn-primary');
+      if (btnLists) btnLists.classList.remove('btn-outline');
+      await loadListDetailPage(id);
+    } else {
+      if (vLists) vLists.hidden = true;
+      if (vDetail) vDetail.hidden = true;
+      if (vDash) vDash.hidden = false;
+      if (btnLists) btnLists.classList.remove('btn-primary');
+      if (btnLists) btnLists.classList.add('btn-outline');
+      document.title = 'Keshk — месечни буџет';
+      if (!state.data) await load();
+    }
+    icons();
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
+  // ---------------------------------------------------------------
+  // Листе за куповину (/liste)
+  // ---------------------------------------------------------------
+  async function loadListsPage() {
     try {
       state.lists = await api('/api/lists');
-      renderListCards();
+      renderListsPageGrid();
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
     }
   }
 
-  function renderListCards() {
-    const c = $('#lists-container');
+  function renderListsPageGrid() {
+    const grid = $('#lists-grid');
+    if (!grid) return;
     const lists = state.lists || [];
     if (!lists.length) {
-      c.innerHTML = `
-        <div class="lists-empty">
-          <span class="lists-empty-icon"><i data-lucide="list-checks"></i></span>
-          <p>Још немаш листу за куповину.</p>
+      grid.innerHTML = `
+        <div class="card lists-page-empty">
+          <span class="lists-page-empty-icon"><i data-lucide="list-checks"></i></span>
+          <p>Још немаш ниједну листу за куповину.</p>
+          <button id="btn-create-first-list" class="btn btn-primary btn-sm" type="button">
+            <i data-lucide="plus"></i><span>Креирај прву листу</span>
+          </button>
         </div>`;
+      $('#btn-create-first-list')?.addEventListener('click', () => openListDialog());
       icons();
       return;
     }
+
     const todayStr = today();
-    c.innerHTML = lists.map((l, i) => {
+    grid.innerHTML = lists.map((l, i) => {
       const pct = l.itemCount > 0 ? Math.round((l.checkedCount / l.itemCount) * 100) : 0;
       const dueLabel = l.dueDate
-        ? `<span class="sl-card-due${l.dueDate < todayStr && !l.txId ? ' is-overdue' : ''}">${l.dueDate}</span>`
-        : '<span class="sl-card-due">∞</span>';
-      const kLabel = l.keshkicTitle ? `<span class="k-pill"><i data-lucide="wallet"></i>${esc(l.keshkicTitle)}</span>` : '';
-      const charged = l.txId > 0;
+        ? `<span class="badge badge-outline${l.dueDate < todayStr && !l.txId ? ' is-overdue' : ''}"><i data-lucide="calendar"></i>${l.dueDate}</span>`
+        : '<span class="badge badge-outline"><i data-lucide="infinity"></i>Без рока</span>';
+      const kLabel = l.keshkicTitle
+        ? `<span class="badge badge-outline"><i data-lucide="wallet"></i>${esc(l.keshkicTitle)}</span>`
+        : '';
+      const createdShort = l.createdAt ? l.createdAt.split('T')[0] : '';
+      const createdLabel = createdShort
+        ? `<span class="badge badge-outline" title="Креирано"><i data-lucide="clock"></i>${createdShort}</span>`
+        : '';
+      const chargedBadge = l.txId > 0
+        ? `<span class="badge badge-success"><i data-lucide="check"></i>Одузето</span>`
+        : '';
+
       return `
-        <div class="sl-card${charged ? ' is-charged' : ''}" data-list-id="${l.id}" style="animation-delay:${i * .04}s">
-          <div class="sl-card-head">
-            <div class="sl-card-title">${esc(l.title)}</div>
+        <div class="sl-page-card${l.txId > 0 ? ' is-charged' : ''}" data-list-id="${l.id}" style="animation-delay:${i * 0.03}s">
+          <div class="sl-page-card-head">
+            <div class="sl-page-card-title">${esc(l.title)}</div>
+            ${chargedBadge}
+          </div>
+          <div class="sl-page-card-meta">
+            ${kLabel}
+            ${createdLabel}
             ${dueLabel}
           </div>
-          <div class="sl-card-progress">
-            <div class="sl-card-progress-bar"><div class="sl-card-progress-fill" style="width:${pct}%"></div></div>
-            <span>${l.checkedCount}/${l.itemCount}</span>
+          <div class="sl-page-card-progress">
+            <div class="sl-page-card-progress-bar"><div class="sl-page-card-progress-fill" style="width:${pct}%"></div></div>
+            <span>${l.checkedCount} од ${l.itemCount} купљено (${pct}%)</span>
           </div>
-          <div class="sl-card-foot">
-            ${kLabel}
-            <span>${l.total > 0 ? money(l.total) : '—'}</span>
+          <div class="sl-page-card-foot">
+            <span>Укупно:</span>
+            <span class="sl-page-card-total">${l.total > 0 ? money(l.total) : '0,00 RSD'}</span>
           </div>
         </div>`;
     }).join('');
     icons();
+  }
+
+  // ---------------------------------------------------------------
+  // Детаљ листе (/liste/:id)
+  // ---------------------------------------------------------------
+  async function loadListDetailPage(id) {
+    try {
+      const l = await api(`/api/lists/${id}`);
+      state.currentList = l;
+      renderListDetailPage(l);
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) {
+        toast('Листа није пронађена или је обрисана', 'error');
+        navigate('/liste');
+      }
+    }
+  }
+
+  function renderListDetailPage(l) {
+    if (!l) return;
+    document.title = `Keshk — ${l.title}`;
+    $('#page-list-title').textContent = l.title;
+
+    const kBadge = l.keshkicTitle
+      ? `<span class="badge badge-outline"><i data-lucide="wallet"></i>${esc(l.keshkicTitle)}</span>`
+      : '<span class="badge badge-outline"><i data-lucide="wallet"></i>Подразумевани Кешкић</span>';
+    const dueLabel = l.dueDate
+      ? `<span class="badge badge-outline"><i data-lucide="calendar"></i>Рок: ${l.dueDate}</span>`
+      : '<span class="badge badge-outline"><i data-lucide="infinity"></i>Без рока</span>';
+    const createdShort = l.createdAt ? l.createdAt.split('T')[0] : '—';
+    const createdBadge = `<span class="badge badge-outline"><i data-lucide="clock"></i>${createdShort}</span>`;
+    const chargedBadge = l.txId > 0
+      ? `<span class="badge badge-success"><i data-lucide="check-circle-2"></i>Одузето са Кешкића</span>`
+      : '';
+
+    $('#page-list-meta').innerHTML = `${kBadge} ${dueLabel} ${createdBadge} ${chargedBadge}`;
+
+    // Items
+    const items = l.items || [];
+    const el = $('#page-list-items');
+    if (!items.length) {
+      el.innerHTML = '<p class="muted small" style="padding:2rem 0;text-align:center;">Ова листа још нема ставки. Додај први производ испод.</p>';
+    } else {
+      el.innerHTML = items.map(it => {
+        const priceLabel = it.price != null ? `<span class="li-item-price">${nf.format(round2(it.price))} RSD</span>` : '';
+        return `
+          <div class="li-item${it.checked ? ' is-checked' : ''}" data-item-id="${it.id}">
+            <input type="checkbox" ${it.checked ? 'checked' : ''} data-toggle-item="${it.id}" aria-label="Купљено">
+            <span class="li-item-name">${esc(it.name)}</span>
+            ${priceLabel}
+            <button class="li-item-delete" type="button" data-delete-item="${it.id}" aria-label="Обриши производ"><i data-lucide="trash-2"></i></button>
+          </div>`;
+      }).join('');
+    }
+
+    // Summary
+    const sum = $('#page-list-summary');
+    sum.innerHTML = `
+      <span>Купљено: <b>${l.checkedCount}</b> од <b>${l.itemCount}</b> производа</span>
+      <span class="muted">Укупно: <b>${money(l.total)}</b>${l.totalAll > l.total ? ` (сви производи: ${money(l.totalAll)})` : ''}</span>`;
+
+    // Charge buttons
+    $('#page-list-charge-btn').hidden = l.txId > 0;
+    $('#page-list-uncharge-btn').hidden = !(l.txId > 0);
+    icons();
+  }
+
+  async function refreshListDetailPage(id) {
+    try {
+      const l = await api(`/api/lists/${id}`);
+      state.currentList = l;
+      renderListDetailPage(l);
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
   }
 
   // --- Create / Edit list dialog ---
@@ -871,7 +1005,6 @@
     $('#list-title').value = list ? list.title : '';
     $('#list-due').value = list ? list.dueDate : '';
     $('#list-error').hidden = true;
-    // Populate keshkic select
     populateKeshkicSelect('#list-keshkic', list ? list.keshkicId : 0);
     d.showModal();
     icons();
@@ -902,77 +1035,28 @@
       if (state.editingList) {
         await api(`/api/lists/${state.editingList.id}`, { method: 'PUT', body });
         toast('Листа измењена');
+        $('#list-dialog').close();
+        if (state.currentList && state.currentList.id === state.editingList.id) {
+          await refreshListDetailPage(state.editingList.id);
+        } else {
+          await loadListsPage();
+        }
       } else {
-        await api('/api/lists', { method: 'POST', body });
+        const created = await api('/api/lists', { method: 'POST', body });
         toast('Листа креирана');
-      }
-      $('#list-dialog').close();
-      await loadLists();
-      // Refresh detail if open
-      if (state.currentList && state.editingList && state.currentList.id === state.editingList.id) {
-        openListDetail(state.editingList.id);
+        $('#list-dialog').close();
+        navigate(`/liste/${created.id}`);
       }
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) { err.textContent = ex.message; err.hidden = false; }
     }
   }
 
-  // --- List detail dialog ---
-  async function openListDetail(id) {
-    try {
-      const l = await api(`/api/lists/${id}`);
-      state.currentList = l;
-      renderListDetail(l);
-      const d = $('#list-detail-dialog');
-      if (!d.open) d.showModal();
-      icons();
-    } catch (ex) {
-      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
-    }
-  }
-
-  function renderListDetail(l) {
-    $('#list-detail-title').textContent = l.title;
-    const kBadge = l.keshkicTitle ? `<span class="k-pill"><i data-lucide="wallet"></i>${esc(l.keshkicTitle)}</span>` : '';
-    const dueLabel = l.dueDate ? l.dueDate : '∞';
-    const createdShort = l.createdAt ? l.createdAt.split('T')[0] : '—';
-    $('#list-detail-meta').innerHTML = `${kBadge} <span>Креирано: ${createdShort}</span> <span>Рок: ${dueLabel}</span>`;
-
-    // Items
-    const items = l.items || [];
-    const el = $('#list-detail-items');
-    if (!items.length) {
-      el.innerHTML = '<p class="muted small" style="padding:.75rem .5rem;text-align:center;">Још нема ставки.</p>';
-    } else {
-      el.innerHTML = items.map(it => {
-        const priceLabel = it.price != null ? `<span class="li-item-price">${nf.format(round2(it.price))}</span>` : '';
-        return `
-          <div class="li-item${it.checked ? ' is-checked' : ''}" data-item-id="${it.id}">
-            <input type="checkbox" ${it.checked ? 'checked' : ''} data-toggle-item="${it.id}">
-            <span class="li-item-name">${esc(it.name)}</span>
-            ${priceLabel}
-            <button class="li-item-delete" type="button" data-delete-item="${it.id}" aria-label="Обриши"><i data-lucide="x"></i></button>
-          </div>`;
-      }).join('');
-    }
-
-    // Summary
-    const sum = $('#list-detail-summary');
-    sum.innerHTML = `
-      <span class="muted">Штиклирано: ${l.checkedCount}/${l.itemCount}</span>
-      <span>Укупно: ${money(l.total)}${l.totalAll > l.total ? ` <span class="muted">(све: ${money(l.totalAll)})</span>` : ''}</span>`;
-
-    // Charge buttons
-    $('#list-charge-btn').hidden = l.txId > 0;
-    $('#list-uncharge-btn').hidden = !(l.txId > 0);
-    icons();
-  }
-
   async function toggleItem(listId, itemId, item, checked) {
     try {
       const body = { name: item.name, price: item.price, checked };
       await api(`/api/lists/${listId}/items/${itemId}`, { method: 'PUT', body });
-      await refreshListDetail(listId);
+      await refreshListDetailPage(listId);
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
     }
@@ -981,16 +1065,16 @@
   async function addItemToList(e) {
     e.preventDefault();
     if (!state.currentList) return;
-    const name = $('#add-item-name').value.trim();
+    const name = $('#page-add-item-name').value.trim();
     if (!name) return;
-    const priceRaw = parseAmount($('#add-item-price').value);
+    const priceRaw = parseAmount($('#page-add-item-price').value);
     const price = priceRaw > 0 ? priceRaw : null;
     try {
       await api(`/api/lists/${state.currentList.id}/items`, { method: 'POST', body: { name, price } });
-      $('#add-item-name').value = '';
-      $('#add-item-price').value = '';
-      await refreshListDetail(state.currentList.id);
-      setTimeout(() => $('#add-item-name').focus(), 60);
+      $('#page-add-item-name').value = '';
+      $('#page-add-item-price').value = '';
+      await refreshListDetailPage(state.currentList.id);
+      setTimeout(() => $('#page-add-item-name').focus(), 60);
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
     }
@@ -999,7 +1083,7 @@
   async function deleteItem(listId, itemId) {
     try {
       await api(`/api/lists/${listId}/items/${itemId}`, { method: 'DELETE' });
-      await refreshListDetail(listId);
+      await refreshListDetailPage(listId);
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
     }
@@ -1010,8 +1094,8 @@
     try {
       await api(`/api/lists/${state.currentList.id}/charge`, { method: 'POST' });
       toast('Одузето од Кешкића');
-      await refreshListDetail(state.currentList.id);
-      await load();
+      await refreshListDetailPage(state.currentList.id);
+      if (state.data) await load();
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
     }
@@ -1022,8 +1106,8 @@
     try {
       await api(`/api/lists/${state.currentList.id}/charge`, { method: 'DELETE' });
       toast('Одузимање поништено');
-      await refreshListDetail(state.currentList.id);
-      await load();
+      await refreshListDetailPage(state.currentList.id);
+      if (state.data) await load();
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
     }
@@ -1031,24 +1115,12 @@
 
   async function deleteList() {
     if (!state.currentList) return;
+    if (!confirm('Да ли си сигуран да желиш да обришеш ову листу?')) return;
     try {
       await api(`/api/lists/${state.currentList.id}`, { method: 'DELETE' });
       toast('Листа обрисана');
-      $('#list-detail-dialog').close();
       state.currentList = null;
-      await loadLists();
-    } catch (ex) {
-      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
-    }
-  }
-
-  async function refreshListDetail(id) {
-    try {
-      const l = await api(`/api/lists/${id}`);
-      state.currentList = l;
-      renderListDetail(l);
-      // Also refresh panel cards
-      await loadLists();
+      navigate('/liste');
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
     }
@@ -1096,33 +1168,43 @@
       $('#acct-avatar-preview').dataset.pending = '';
     });
 
-    // Листе
-    $('#btn-lists').addEventListener('click', toggleListsPanel);
-    $$('[data-close-lists]').forEach(b => b.addEventListener('click', () => { $('#lists-panel').hidden = true; }));
-    $('#btn-new-list').addEventListener('click', () => openListDialog());
+    // Навигација
+    $('a.brand').addEventListener('click', (e) => {
+      e.preventDefault();
+      navigate('/');
+    });
+    $('#btn-lists').addEventListener('click', () => {
+      if (window.location.pathname === '/liste') navigate('/');
+      else navigate('/liste');
+    });
+    $('#back-from-lists')?.addEventListener('click', () => navigate('/'));
+    $('#btn-back-lists')?.addEventListener('click', () => navigate('/liste'));
+
+    // Страница Листе (/liste)
+    $('#btn-new-list-page')?.addEventListener('click', () => openListDialog());
     $('#list-form').addEventListener('submit', saveList);
-    $('#lists-container').addEventListener('click', (e) => {
-      const card = e.target.closest('.sl-card');
-      if (card) openListDetail(Number(card.dataset.listId));
+    $('#lists-grid')?.addEventListener('click', (e) => {
+      const card = e.target.closest('.sl-page-card');
+      if (card) navigate(`/liste/${card.dataset.listId}`);
     });
 
-    // Детаљ листе
-    $('#add-item-form').addEventListener('submit', addItemToList);
-    $('#list-detail-items').addEventListener('change', (e) => {
+    // Страница Детаљ листе (/liste/:id)
+    $('#page-add-item-form')?.addEventListener('submit', addItemToList);
+    $('#page-list-items')?.addEventListener('change', (e) => {
       const cb = e.target.closest('[data-toggle-item]');
       if (!cb || !state.currentList) return;
       const itemId = Number(cb.dataset.toggleItem);
       const item = (state.currentList.items || []).find(i => i.id === itemId);
       if (item) toggleItem(state.currentList.id, itemId, item, cb.checked);
     });
-    $('#list-detail-items').addEventListener('click', (e) => {
+    $('#page-list-items')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-delete-item]');
       if (btn && state.currentList) deleteItem(state.currentList.id, Number(btn.dataset.deleteItem));
     });
-    $('#list-charge-btn').addEventListener('click', chargeList);
-    $('#list-uncharge-btn').addEventListener('click', unchargeList);
-    $('#list-delete-btn').addEventListener('click', deleteList);
-    $('#list-edit-btn').addEventListener('click', () => {
+    $('#page-list-charge-btn')?.addEventListener('click', chargeList);
+    $('#page-list-uncharge-btn')?.addEventListener('click', unchargeList);
+    $('#page-list-delete-btn')?.addEventListener('click', deleteList);
+    $('#page-list-edit-btn')?.addEventListener('click', () => {
       if (state.currentList) openListDialog(state.currentList);
     });
 
@@ -1131,8 +1213,10 @@
     $('#month-label').addEventListener('click', () => goMonth(currentMonth()));
 
     // Главно дугме у горњој траци: "Нова" [N]
-    $('#btn-new').addEventListener('click', () => openModal('expense'));
-    $('#fab').addEventListener('click', () => openModal('expense'));
+    $('#fab').addEventListener('click', () => {
+      if (window.location.pathname.startsWith('/liste')) openListDialog();
+      else openModal('expense');
+    });
 
     // Брзо додавање са картица
     $('#add-keshkic-top').addEventListener('click', () => openModal('keshkic'));
@@ -1232,19 +1316,22 @@
     document.addEventListener('keydown', (e) => {
       if ($('#app-view').hidden) return;
       if (e.target.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
-      // Allow Escape to close lists panel
-      if (e.key === 'Escape' && !$('#lists-panel').hidden) {
-        $('#lists-panel').hidden = true;
-        return;
-      }
       if (document.querySelector('dialog[open]')) return;
       const k = e.key.toLowerCase();
       if (k === 'n' || k === 'н') { e.preventDefault(); openModal('expense'); }
       else if (k === 'k' || k === 'к') { e.preventDefault(); openModal('keshkic'); }
-      else if (k === 'l' || k === 'л') { e.preventDefault(); toggleListsPanel(); }
+      else if (k === 'l' || k === 'л') {
+        e.preventDefault();
+        if (window.location.pathname === '/liste') navigate('/');
+        else navigate('/liste');
+      }
       else if (e.key === 'ArrowLeft') goMonth(shiftMonth(state.month, -1));
       else if (e.key === 'ArrowRight') goMonth(shiftMonth(state.month, 1));
       else if (k === 't' || k === 'т') goMonth(currentMonth());
+    });
+
+    window.addEventListener('popstate', () => {
+      routeTo(window.location.pathname);
     });
 
     document.addEventListener('visibilitychange', () => {

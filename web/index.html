@@ -104,7 +104,7 @@
       </div>
     </header>
 
-    <main class="container main">
+    <main id="view-dashboard" class="container main">
       <h1 class="sr-only">Месечни буџет</h1>
 
       <!-- Месечни мењач -->
@@ -180,6 +180,56 @@
           </div>
         </aside>
       </section>
+    </main>
+
+    <!-- ============ Страница: Све листе (/liste) ============ -->
+    <main id="view-lists" class="container main lists-page" hidden>
+      <div class="page-head">
+        <div>
+          <button class="link-back" id="back-from-lists" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+          <h1 class="page-title"><i data-lucide="list-checks"></i><span>Листе за куповину</span></h1>
+          <p class="muted small">Све листе повезане са твојим Кешкићима. Сваки производ може имати цену, а укупан износ лако одузимаш са буџета.</p>
+        </div>
+        <button id="btn-new-list-page" class="btn btn-primary btn-sm" type="button">
+          <i data-lucide="plus"></i><span>Нова листа</span>
+        </button>
+      </div>
+
+      <div id="lists-grid" class="lists-page-grid"></div>
+    </main>
+
+    <!-- ============ Страница: Детаљ листе (/liste/:id) ============ -->
+    <main id="view-list-detail" class="container main list-detail-page" hidden>
+      <button class="link-back" id="btn-back-lists" type="button"><i data-lucide="arrow-left"></i><span>Све листе</span></button>
+
+      <div class="card list-page-card">
+        <div class="list-page-card-head">
+          <div class="list-page-title-wrap">
+            <h1 id="page-list-title" class="page-title">—</h1>
+            <div id="page-list-meta" class="list-detail-meta"></div>
+          </div>
+          <div class="list-page-actions">
+            <button id="page-list-edit-btn" class="btn btn-outline btn-sm" type="button"><i data-lucide="pencil"></i><span>Измени</span></button>
+            <button id="page-list-delete-btn" class="btn btn-outline btn-sm is-danger-btn" type="button"><i data-lucide="trash-2"></i><span>Обриши</span></button>
+          </div>
+        </div>
+
+        <div id="page-list-items" class="list-items page-list-items"></div>
+
+        <form id="page-add-item-form" class="add-item-row page-add-item-row" novalidate>
+          <input id="page-add-item-name" class="input" placeholder="Додај производ (нпр. млеко, кафа, хлеб)…" maxlength="120" autocomplete="off" required>
+          <input id="page-add-item-price" class="input input-sm" inputmode="decimal" placeholder="Цена (RSD)">
+          <button class="btn btn-primary btn-icon btn-sm" type="submit" aria-label="Додај производ"><i data-lucide="plus"></i></button>
+        </form>
+
+        <div class="list-page-foot">
+          <div class="list-detail-summary" id="page-list-summary"></div>
+          <div class="list-charge-actions">
+            <button id="page-list-uncharge-btn" class="btn btn-outline btn-sm" type="button" hidden><i data-lucide="undo-2"></i><span>Поништи одузимање</span></button>
+            <button id="page-list-charge-btn" class="btn btn-primary btn-sm" type="button"><i data-lucide="wallet"></i><span>Одузми од Кешкића</span></button>
+          </div>
+        </div>
+      </div>
     </main>
 
     <footer class="site-footer">
@@ -321,22 +371,7 @@
     </div>
   </dialog>
 
-  <!-- ============ Панел: Листе за куповину ============ -->
-  <div id="lists-panel" class="lists-panel" hidden>
-    <div class="lists-panel-backdrop" data-close-lists></div>
-    <div class="lists-panel-body">
-      <div class="lists-panel-head">
-        <h3><i data-lucide="list-checks"></i><span>Листе за куповину</span></h3>
-        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close-lists aria-label="Затвори"><i data-lucide="x"></i></button>
-      </div>
-      <div class="lists-panel-actions">
-        <button id="btn-new-list" class="btn btn-primary btn-sm btn-block" type="button">
-          <i data-lucide="plus"></i><span>Нова листа</span>
-        </button>
-      </div>
-      <div id="lists-container" class="lists-container"></div>
-    </div>
-  </div>
+
 
   <!-- ============ Дијалог: Нова/Измена листе ============ -->
   <dialog id="list-dialog" class="dialog dialog-sm" aria-labelledby="list-dialog-title">
@@ -363,33 +398,6 @@
         <button id="list-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span id="list-save-label">Сачувај</span></button>
       </div>
     </form>
-  </dialog>
-
-  <!-- ============ Дијалог: Детаљ листе ============ -->
-  <dialog id="list-detail-dialog" class="dialog" aria-labelledby="list-detail-title">
-    <div class="dialog-body">
-      <div class="dialog-head">
-        <div>
-          <h3 id="list-detail-title">—</h3>
-          <div class="list-detail-meta" id="list-detail-meta"></div>
-        </div>
-        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
-      </div>
-      <div id="list-detail-items" class="list-items"></div>
-      <form id="add-item-form" class="add-item-row" novalidate>
-        <input id="add-item-name" class="input" placeholder="Додај производ…" maxlength="120" autocomplete="off">
-        <input id="add-item-price" class="input input-sm" inputmode="decimal" placeholder="Цена">
-        <button class="btn btn-primary btn-icon btn-sm" type="submit" aria-label="Додај"><i data-lucide="plus"></i></button>
-      </form>
-      <div class="list-detail-summary" id="list-detail-summary"></div>
-      <div class="dialog-foot">
-        <button id="list-edit-btn" class="btn btn-outline btn-sm" type="button"><i data-lucide="pencil"></i><span>Измени</span></button>
-        <button id="list-delete-btn" class="btn btn-outline btn-sm" type="button"><i data-lucide="trash-2"></i><span>Обриши</span></button>
-        <div style="flex:1"></div>
-        <button id="list-uncharge-btn" class="btn btn-outline btn-sm" type="button" hidden><i data-lucide="undo-2"></i><span>Поништи одузимање</span></button>
-        <button id="list-charge-btn" class="btn btn-primary btn-sm" type="button"><i data-lucide="wallet"></i><span>Одузми од Кешкића</span></button>
-      </div>
-    </div>
   </dialog>
 
   <div id="toaster" class="toaster" aria-live="polite"></div>

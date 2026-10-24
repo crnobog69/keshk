@@ -101,6 +101,8 @@ func main() {
 	}
 	app.Get("/", sendIndex)
 	app.Get("/index.html", sendIndex)
+	app.Get("/liste", sendIndex)
+	app.Get("/liste/*", sendIndex)
 
 	web, err := fs.Sub(webFS, "web")
 	if err != nil {
@@ -117,6 +119,7 @@ func main() {
 			return nil
 		},
 	}))
+	app.Get("/*", sendIndex)
 
 	log.Printf("[INFO] Keshk radi na http://localhost:%s", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))

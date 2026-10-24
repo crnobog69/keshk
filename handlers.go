@@ -13,10 +13,11 @@ import (
 )
 
 type Handlers struct {
-	cfg   Config
-	store *Store
-	rates *Rates
-	auth  *Auth
+	cfg     Config
+	store   *Store
+	rates   *Rates
+	auth    *Auth
+	limiter *LoginLimiter
 }
 
 type MonthSummary struct {
@@ -70,10 +71,18 @@ func (h *Handlers) Login(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&body); err != nil {
 		return fail(c, fiber.StatusBadRequest, "Неисправан захтев")
 	}
+	ip := clientIP(c)
+	if blocked, wait := h.limiter.blocked(ip); blocked {
+		c.Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		return fail(c, fiber.StatusTooManyRequests, "Превише неуспешних покушаја. Покушај поново за "+strconv.Itoa(int(wait.Minutes())+1)+" мин.")
+	}
 	if !h.auth.checkCredentials(strings.TrimSpace(body.Username), body.Password) {
+		h.limiter.fail(ip)
+		log.Printf("[WARN] неуспешна пријава са %s", ip)
 		time.Sleep(400 * time.Millisecond)
 		return fail(c, fiber.StatusUnauthorized, "Погрешно корисничко име или лозинка")
 	}
+	h.limiter.success(ip)
 	h.auth.setSession(c)
 	return c.JSON(fiber.Map{"username": h.cfg.Username})
 }

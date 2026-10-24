@@ -32,7 +32,7 @@ func main() {
 		}
 	}
 
-	h := &Handlers{cfg: cfg, store: store, rates: newRates(cfg.FallbackRates), auth: newAuth(cfg, store.GetSetting(settingPassHash))}
+	h := &Handlers{cfg: cfg, store: store, rates: newRates(cfg.FallbackRates), auth: newAuth(cfg, store.GetSetting(settingPassHash)), limiter: newLoginLimiter()}
 
 	app := fiber.New(fiber.Config{AppName: "Keshk"})
 	app.Use(recoverer.New())

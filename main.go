@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"io/fs"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -29,6 +30,12 @@ func main() {
 	if cfg.ResetPassword {
 		if err := store.SetSetting(settingPassHash, ""); err == nil {
 			log.Println("[INFO] Лозинка враћена на вредност из .env (KESHK_RESET_PASSWORD)")
+		}
+	}
+
+	if cfg.Seed {
+		if err := seedDemo(store, time.Now()); err != nil {
+			log.Fatalf("[ERROR] пробни подаци: %v", err)
 		}
 	}
 
@@ -75,6 +82,11 @@ func main() {
 	api.Delete("/lists/:id/items/:itemId", h.DeleteItem)
 	api.Post("/lists/:id/charge", h.ChargeList)
 	api.Delete("/lists/:id/charge", h.UnchargeList)
+
+	// Извоз / увоз података
+	api.Get("/export", h.ExportData)
+	api.Post("/import", h.ImportData)
+
 	api.Use(func(c fiber.Ctx) error {
 		return fail(c, fiber.StatusNotFound, "Рута не постоји")
 	})

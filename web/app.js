@@ -76,6 +76,7 @@
     // Shopping lists
     lists: [],
     currentList: null,
+    editingItemId: null,
     editingList: null,
   };
 
@@ -214,16 +215,34 @@
     icons();
   }
 
+  // Просек потрошње: све потрошено од почетка најранијег Кешкића (1. у месецу)
+  // до данас (текући месец) односно до последњег дана приказаног месеца.
+  function spendingAverage(s, cm) {
+    const starts = (s.keshkici || []).map((k) => k.month).sort();
+    if (!starts.length || state.month > cm) return null;
+    const start = parseDate(`${starts[0]}-01`);
+    const now = new Date();
+    const end = state.month === cm
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      : parseDate(`${state.month}-${pad(daysIn(state.month))}`);
+    const days = Math.max(1, Math.round((end - start) / 86400000) + 1);
+    return { avg: s.expenses / days, days, since: starts[0] };
+  }
+
   function balanceHint(s, cm) {
     if (!s.keshkici.length) return 'Овај месец још нема Кешкића — кликни на „Нова” или „Додај Кешкић”! ';
-    if (s.balance < 0) return `Прекорачење буџета за ${money(-s.balance)}`;
+    const a = spendingAverage(s, cm);
+    if (!a) return 'Будући месец';
+    const avgText = `Просек потрошње ≈ ${money(a.avg)} дневно (${a.days} ${plural(a.days, 'дан', 'дана', 'дана')} од ${monthLabel(a.since)})`;
+    if (s.balance < 0) return `Прекорачење буџета за ${money(-s.balance)} · ${avgText}`;
     if (state.month === cm) {
-      const d = new Date();
-      const left = daysIn(cm) - d.getDate() + 1;
-      return `≈ ${money(s.balance / left)} дневно · још ${left} ${plural(left, 'дан', 'дана', 'дана')}`;
+      if (a.avg > 0) {
+        const left = Math.floor(s.balance / a.avg);
+        return `${avgText} · при томе је доста за још ≈ ${left} ${plural(left, 'дан', 'дана', 'дана')}`;
+      }
+      return `${avgText} · ништа још није потрошено`;
     }
-    if (state.month < cm) return s.balance > 0 ? `Остало ти је ${money(s.balance)} на крају месеца` : 'Месец је завршен';
-    return 'Будући месец';
+    return s.balance > 0 ? `${avgText} · остало ти је ${money(s.balance)} на крају месеца` : `${avgText} · месец је завршен`;
   }
 
   function animateNumber(el, to) {
@@ -269,17 +288,17 @@
         : `Почетно: ${money(k.amountRsd)}`;
       const sinceInfo = k.month !== state.month ? `Од: ${monthLabel(k.month)}` : '';
       const badge = k.dropped
-        ? '<span class="k-badge-def is-dropped"><i data-lucide="archive"></i><span>Одбачен</span></span>'
-        : (isDef ? '<span class="k-badge-def"><i data-lucide="star"></i><span>Подразумевани</span></span>' : '');
+        ? '<span class="k-mark is-dropped" title="Одбачен"><i data-lucide="archive"></i></span>'
+        : (isDef ? '<span class="k-mark" title="Подразумевани"><i data-lucide="star"></i></span>' : '');
 
       return `
         <div class="k-card ${isActive ? 'is-active' : ''} ${isNeg ? 'is-negative' : ''} ${k.dropped ? 'is-dropped' : ''}" data-k-id="${k.id}">
           <div class="k-head">
             <div class="k-head-left">
-              <div class="k-title" title="${esc(k.title)}">${esc(k.title)}</div>
+              <div class="k-title-row">${badge}<div class="k-title" title="${esc(k.title)}">${esc(k.title)}</div></div>
               <div class="k-initial">${initialInfo}${sinceInfo ? ' · ' + sinceInfo : ''}</div>
             </div>
-            ${badge}
+
           </div>
 
           <div class="k-balance-row">
@@ -674,6 +693,48 @@
   // ---------------------------------------------------------------
   // Тема
   // ---------------------------------------------------------------
+  // ---------------------------------------------------------------
+  // Извоз / увоз података
+  // ---------------------------------------------------------------
+  async function exportData() {
+    $('#settings-menu').hidden = true;
+    try {
+      const res = await fetch('/api/export', { credentials: 'same-origin' });
+      if (res.status === 401) { showLogin(); return; }
+      if (!res.ok) throw new Error(`Грешка (${res.status})`);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `keshk-backup-${today()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      toast('Подаци извезени');
+    } catch (ex) {
+      toast(ex.message, 'error');
+    }
+  }
+
+  async function importData(file) {
+    if (!file) return;
+    if (!confirm('Увоз ЗАМЕЊУЈЕ све тренутне Кешкиће, трошкове и листе подацима из датотеке.\n\nНалог (лозинка, слика) остаје исти. Наставити?')) return;
+    try {
+      const text = await file.text();
+      try { JSON.parse(text); } catch { throw new Error('Датотека није исправан JSON'); }
+      const r = await api('/api/import', { method: 'POST', body: JSON.parse(text) });
+      toast(`Увезено: ${r.keshkici} Кешкића, ${troskoviWord(r.transactions)}, ${r.lists} листа`);
+      state.data = null;
+      state.currentList = null;
+      state.selectedKeshkicFilter = 0;
+      await loadHistory();
+      await load();
+      await routeTo(window.location.pathname);
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
   function toggleTheme() {
     const dark = !document.documentElement.classList.contains('dark');
     document.documentElement.classList.toggle('dark', dark);
@@ -827,7 +888,8 @@
       if (vLists) vLists.hidden = false;
       if (btnLists) btnLists.classList.add('btn-primary');
       if (btnLists) btnLists.classList.remove('btn-outline');
-      document.title = 'Keshk — Листе за куповину';
+      document.title = 'Keshk >> Листе за куповину';
+      if (!state.data) await load();
       await loadListsPage();
     } else if (path.startsWith('/liste/')) {
       const id = path.slice('/liste/'.length);
@@ -836,6 +898,7 @@
       if (vDetail) vDetail.hidden = false;
       if (btnLists) btnLists.classList.add('btn-primary');
       if (btnLists) btnLists.classList.remove('btn-outline');
+      if (!state.data) await load();
       await loadListDetailPage(id);
     } else {
       if (vLists) vLists.hidden = true;
@@ -843,7 +906,7 @@
       if (vDash) vDash.hidden = false;
       if (btnLists) btnLists.classList.remove('btn-primary');
       if (btnLists) btnLists.classList.add('btn-outline');
-      document.title = 'Keshk — месечни буџет';
+      document.title = 'Keshk >> месечни буџет';
       if (!state.data) await load();
     }
     icons();
@@ -925,6 +988,7 @@
   // Детаљ листе (/liste/:id)
   // ---------------------------------------------------------------
   async function loadListDetailPage(id) {
+    state.editingItemId = null;
     try {
       const l = await api(`/api/lists/${id}`);
       state.currentList = l;
@@ -939,7 +1003,7 @@
 
   function renderListDetailPage(l) {
     if (!l) return;
-    document.title = `Keshk — ${l.title}`;
+    document.title = `Keshk >> ${l.title}`;
     $('#page-list-title').textContent = l.title;
 
     const kBadge = l.keshkicTitle
@@ -964,11 +1028,21 @@
     } else {
       el.innerHTML = items.map(it => {
         const priceLabel = it.price != null ? `<span class="li-item-price">${nf.format(round2(it.price))} RSD</span>` : '';
+        if (state.editingItemId === it.id) {
+          return `
+            <form class="li-item li-item-form" data-edit-form="${it.id}" novalidate>
+              <input class="input" name="name" value="${esc(it.name)}" maxlength="120" autocomplete="off" required aria-label="Назив производа">
+              <input class="input input-sm" name="price" value="${it.price != null ? nf.format(round2(it.price)) : ''}" inputmode="decimal" placeholder="Цена (RSD)" autocomplete="off" aria-label="Цена (RSD)">
+              <button class="btn btn-primary btn-icon btn-sm" type="submit" aria-label="Сачувај измену"><i data-lucide="check"></i></button>
+              <button class="btn btn-ghost btn-icon btn-sm" type="button" data-cancel-edit aria-label="Откажи"><i data-lucide="x"></i></button>
+            </form>`;
+        }
         return `
           <div class="li-item${it.checked ? ' is-checked' : ''}" data-item-id="${it.id}">
             <input type="checkbox" ${it.checked ? 'checked' : ''} data-toggle-item="${it.id}" aria-label="Купљено">
             <span class="li-item-name">${esc(it.name)}</span>
             ${priceLabel}
+            <button class="li-item-edit" type="button" data-edit-item="${it.id}" aria-label="Измени производ" title="Измени"><i data-lucide="pencil"></i></button>
             <button class="li-item-delete" type="button" data-delete-item="${it.id}" aria-label="Обриши производ"><i data-lucide="trash-2"></i></button>
           </div>`;
       }).join('');
@@ -1080,6 +1154,47 @@
     }
   }
 
+  function startEditItem(itemId) {
+    if (!state.currentList) return;
+    state.editingItemId = itemId;
+    renderListDetailPage(state.currentList);
+    const input = $(`[data-edit-form="${itemId}"] input[name="name"]`);
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function cancelEditItem() {
+    if (state.editingItemId == null || !state.currentList) return;
+    state.editingItemId = null;
+    renderListDetailPage(state.currentList);
+  }
+
+  async function saveItemEdit(e) {
+    e.preventDefault();
+    const form = e.target.closest('[data-edit-form]');
+    if (!form || !state.currentList) return;
+    const itemId = Number(form.dataset.editForm);
+    const item = (state.currentList.items || []).find((i) => i.id === itemId);
+    if (!item) return;
+
+    const name = form.elements.name.value.trim();
+    if (!name) { toast('Унеси назив производа', 'error'); form.elements.name.focus(); return; }
+    const rawPrice = form.elements.price.value.trim();
+    let price = null;
+    if (rawPrice) {
+      price = parseAmount(rawPrice);
+      if (!(price >= 0)) { toast('Неисправна цена, нпр. 250,00', 'error'); form.elements.price.focus(); return; }
+      if (price === 0) price = null;
+    }
+    try {
+      await api(`/api/lists/${state.currentList.id}/items/${itemId}`, { method: 'PUT', body: { name, price, checked: item.checked } });
+      state.editingItemId = null;
+      await refreshListDetailPage(state.currentList.id);
+      toast('Производ измењен');
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
   async function deleteItem(listId, itemId) {
     try {
       await api(`/api/lists/${listId}/items/${itemId}`, { method: 'DELETE' });
@@ -1158,6 +1273,13 @@
       showLogin();
     });
     $('#menu-account').addEventListener('click', openAccountDialog);
+    $('#menu-export').addEventListener('click', exportData);
+    $('#menu-import').addEventListener('click', () => { $('#settings-menu').hidden = true; $('#import-input').click(); });
+    $('#import-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      importData(file);
+    });
 
     // Налог
     $('#account-form').addEventListener('submit', saveAccount);
@@ -1201,6 +1323,20 @@
       const btn = e.target.closest('[data-delete-item]');
       if (btn && state.currentList) deleteItem(state.currentList.id, Number(btn.dataset.deleteItem));
     });
+    $('#page-list-items')?.addEventListener('click', (e) => {
+      const edit = e.target.closest('[data-edit-item]');
+      if (edit) return startEditItem(Number(edit.dataset.editItem));
+      if (e.target.closest('[data-cancel-edit]')) cancelEditItem();
+    });
+    $('#page-list-items')?.addEventListener('dblclick', (e) => {
+      const name = e.target.closest('.li-item-name');
+      const row = name && name.closest('[data-item-id]');
+      if (row) startEditItem(Number(row.dataset.itemId));
+    });
+    $('#page-list-items')?.addEventListener('submit', saveItemEdit);
+    $('#page-list-items')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && e.target.closest('[data-edit-form]')) { e.preventDefault(); cancelEditItem(); }
+    });
     $('#page-list-charge-btn')?.addEventListener('click', chargeList);
     $('#page-list-uncharge-btn')?.addEventListener('click', unchargeList);
     $('#page-list-delete-btn')?.addEventListener('click', deleteList);
@@ -1213,6 +1349,7 @@
     $('#month-label').addEventListener('click', () => goMonth(currentMonth()));
 
     // Главно дугме у горњој траци: "Нова" [N]
+    $('#btn-new').addEventListener('click', () => $('#fab').click());
     $('#fab').addEventListener('click', () => {
       if (window.location.pathname.startsWith('/liste')) openListDialog();
       else openModal('expense');

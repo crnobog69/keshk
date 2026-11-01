@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Keshk — месечни буџет</title>
+  <title>Keshk &gt;&gt; месечни буџет</title>
   <meta name="description" content="Keshk – минималистичка апликација за праћење месечног буџета, Кешкића и трошкова у више валута.">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="#09090b">
   <meta name="robots" content="noindex">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="https://sen.crnbg.org/f/aTY0IELGyNTh6T">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -29,14 +29,14 @@
 
   <!-- ============ Splash ============ -->
   <div id="splash" class="splash" aria-hidden="true">
-    <span class="brand-mark brand-mark-lg pulse"><i data-lucide="wallet"></i></span>
+    <span class="brand-mark brand-mark-lg brand-mark-img pulse"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk"></span>
   </div>
 
   <!-- ============ Пријава ============ -->
   <main id="login-view" class="login" hidden>
     <form id="login-form" class="card login-card" autocomplete="on" novalidate>
       <div class="brand brand-lg">
-        <span class="brand-mark"><i data-lucide="wallet"></i></span>
+        <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk"></span>
         <span>Keshk</span>
       </div>
       <div class="login-copy">
@@ -66,7 +66,7 @@
     <header class="topbar">
       <div class="container topbar-inner">
         <a class="brand" href="/" aria-label="Keshk почетна">
-          <span class="brand-mark"><i data-lucide="wallet"></i></span>
+          <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk"></span>
           <span>Keshk</span>
         </a>
         <div class="topbar-actions">
@@ -91,6 +91,13 @@
               <button class="dropdown-item" type="button" id="menu-account">
                 <i data-lucide="user"></i><span>Налог</span>
               </button>
+              <button class="dropdown-item" type="button" id="menu-export">
+                <i data-lucide="download"></i><span>Извези податке</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-import">
+                <i data-lucide="upload"></i><span>Увези податке</span>
+              </button>
+              <input type="file" id="import-input" accept="application/json,.json" hidden>
               <button class="dropdown-item" type="button" id="menu-theme">
                 <i data-lucide="sun" class="icon-sun"></i><i data-lucide="moon" class="icon-moon"></i><span id="menu-theme-label">Светла тема</span>
               </button>

@@ -20,6 +20,7 @@ type Config struct {
 	DefaultKeshkic float64 // предлог износа за месечни Кешкић
 	CookieSecure  bool
 	ResetPassword bool               // KESHK_RESET_PASSWORD=true брише лозинку сачувану у бази
+	Seed          bool               // KESHK_SEED=true пуни празну базу пробним подацима
 	FallbackRates map[string]float64 // RSD per 1 unit of currency
 }
 
@@ -36,6 +37,7 @@ func loadConfig() Config {
 		DefaultKeshkic: envFloat("DEFAULT_KESHKIC", 5000),
 		CookieSecure: strings.EqualFold(env("COOKIE_SECURE", "false"), "true"),
 		ResetPassword: strings.EqualFold(env("KESHK_RESET_PASSWORD", "false"), "true"),
+		Seed:          strings.EqualFold(env("KESHK_SEED", "false"), "true"),
 		FallbackRates: map[string]float64{
 			"RSD": 1,
 			"EUR": envFloat("FALLBACK_EUR_RSD", 117.2),

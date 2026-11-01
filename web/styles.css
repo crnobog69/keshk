@@ -271,6 +271,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); curs
 .brand-lg .brand-mark { width: 2.5rem; height: 2.5rem; border-radius: .75rem; }
 .brand-mark-lg { width: 3.5rem; height: 3.5rem; border-radius: 1rem; }
 .brand-mark-lg svg.lucide { width: 1.6rem; height: 1.6rem; }
+.brand-mark-img { background: none; box-shadow: none; overflow: hidden; }
+.brand-logo { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 /* =========================================================
    Splash + Login
@@ -592,8 +594,8 @@ html:not(.dark) .icon-moon { display: none; }
 .keshkici-section { margin-bottom: 0; }
 .keshkici-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: .875rem;
+  grid-template-columns: 1fr;
+  gap: .75rem;
   padding: 1rem 1.25rem 1.25rem;
 }
 
@@ -618,6 +620,28 @@ html:not(.dark) .icon-moon { display: none; }
   box-shadow: 0 0 0 1px hsl(var(--foreground));
 }
 .k-card.is-negative .k-balance { color: hsl(var(--danger)); }
+
+/* Хоризонтална картица: назив | преостало | трака | потрошено + радње (картице једна испод друге) */
+.k-card {
+  grid-template-columns: minmax(15rem, 2fr) minmax(8.5rem, auto) minmax(6rem, 1.4fr) auto;
+  align-items: center;
+  gap: 1.25rem;
+  padding: .875rem 1.25rem;
+}
+.k-card:hover { transform: none; }
+.k-card .k-balance-row,
+.k-card .k-progress,
+.k-card .k-foot { margin-top: 0; }
+.k-card .k-balance-row { display: grid; gap: .15rem; }
+
+
+.k-card .k-foot { gap: 1rem; white-space: nowrap; }
+@media (max-width: 900px) {
+  .k-card { grid-template-columns: 1fr auto; gap: .6rem 1rem; }
+  .k-card .k-progress,
+  .k-card .k-foot { grid-column: 1 / -1; }
+  .k-card .k-foot { justify-content: space-between; }
+}
 
 .k-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
 .k-head-left { display: grid; gap: .2rem; min-width: 0; }
@@ -665,6 +689,13 @@ html:not(.dark) .icon-moon { display: none; }
 .k-card.is-dropped { opacity: .6; border-style: dashed; }
 .k-card.is-dropped:hover { opacity: .9; }
 .k-badge-def.is-dropped { color: hsl(var(--muted-foreground)); }
+
+/* Мала ознака уз назив (подразумевани / одбачен) — не повећава картицу */
+.k-title-row { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.k-mark { display: inline-grid; place-items: center; flex-shrink: 0; color: hsl(var(--foreground)); position: relative; top: -2px; }
+.k-mark svg.lucide { width: .95rem; height: .95rem; }
+.k-mark:not(.is-dropped) svg.lucide { fill: currentColor; }
+.k-mark.is-dropped { color: hsl(var(--muted-foreground)); }
 
 /* Pill on transaction item */
 .k-pill {
@@ -722,7 +753,7 @@ html:not(.dark) .icon-moon { display: none; }
 }
 
 @media (max-width: 640px) {
-  .keshkici-grid { grid-template-columns: 1fr; }
+  .k-card { grid-template-columns: 1fr; gap: .5rem; align-items: stretch; }
   .input, .select, select {
     font-size: 16px; /* Prevents auto-zoom and blue highlight shift on iOS Safari */
   }
@@ -1068,7 +1099,7 @@ html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35
 }
 .li-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: .75rem;
   padding: .65rem .75rem;
@@ -1081,12 +1112,25 @@ html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35
 .li-item-name { font-size: .9375rem; font-weight: 500; }
 .li-item.is-checked .li-item-name { text-decoration: line-through; color: hsl(var(--muted-foreground)); }
 .li-item-price { font-size: .875rem; font-weight: 600; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); }
+.li-item-edit,
 .li-item-delete {
   width: 1.75rem; height: 1.75rem; display: grid; place-items: center;
   border: 0; background: none; color: hsl(var(--muted-foreground)); border-radius: .3rem;
   opacity: .5; transition: opacity .12s, color .12s, background .12s; cursor: pointer;
 }
+.li-item:hover .li-item-edit,
 .li-item:hover .li-item-delete { opacity: 1; }
+.li-item-edit:hover { color: hsl(var(--foreground)); background: hsl(var(--accent)); }
+.li-item-edit svg.lucide { width: .9rem; height: .9rem; }
+.li-item-form { grid-template-columns: 1fr auto auto auto; gap: .5rem; }
+.li-item-form .input { height: 2.25rem; font-size: .9375rem; }
+.li-item-form .input-sm { width: 7.5rem; }
+@media (max-width: 560px) {
+  .li-item-form { grid-template-columns: 1fr auto auto; }
+  .li-item-form .input:first-child { grid-column: 1 / -1; }
+  .li-item-form .input-sm { width: 100%; }
+}
+@media (hover: none) { .li-item-edit, .li-item-delete { opacity: 1; } }
 .li-item-delete:hover { color: hsl(var(--danger)); background: hsl(var(--danger) / .1); }
 .li-item-delete svg.lucide { width: .9rem; height: .9rem; }
 

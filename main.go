@@ -38,6 +38,7 @@ func main() {
 			log.Fatalf("[ERROR] пробни подаци: %v", err)
 		}
 	}
+	store.EnsureMemberSince(time.Now())
 
 	h := &Handlers{cfg: cfg, store: store, rates: newRates(cfg.FallbackRates), auth: newAuth(cfg, store.GetSetting(settingPassHash)), limiter: newLoginLimiter()}
 
@@ -67,9 +68,10 @@ func main() {
 	api.Put("/transactions/:id", h.UpdateTx)
 	api.Delete("/transactions/:id", h.DeleteTx)
 
-	// Налог
+	// Налог и профили
 	api.Put("/account", h.UpdateAccount)
 	api.Put("/account/password", h.ChangePassword)
+	api.Get("/users/:handle", h.GetUser)
 
 	// Листе за куповину
 	api.Get("/lists", h.ListLists)
@@ -115,6 +117,8 @@ func main() {
 	app.Get("/index.html", sendIndex)
 	app.Get("/liste", sendIndex)
 	app.Get("/liste/*", sendIndex)
+	app.Get("/u", sendIndex)
+	app.Get("/u/*", sendIndex)
 
 	web, err := fs.Sub(webFS, "web")
 	if err != nil {

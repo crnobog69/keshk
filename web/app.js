@@ -73,6 +73,8 @@
     lastCurrency: localStorage.getItem('keshk-currency') || 'RSD',
     // Account
     account: null,
+    currentProfile: null,
+    authNoticeShown: false,
     // Shopping lists
     lists: [],
     currentList: null,
@@ -117,10 +119,34 @@
   // ---------------------------------------------------------------
   // Приказ (Views)
   // ---------------------------------------------------------------
-  function showLogin() {
+  function showLogin({ manualLogout = false } = {}) {
     $('#splash').classList.add('is-hidden');
     $('#login-view').hidden = false;
     $('#app-view').hidden = true;
+
+    const notice = $('#login-notice');
+    const noticeText = $('#login-notice-text');
+    const p = window.location.pathname;
+    if (!manualLogout && (p === '/u' || p.startsWith('/u/'))) {
+      let handle = '';
+      try { handle = decodeURIComponent(p.slice(3)).replace(/\/+$/, '').replace(/^@+/, '').trim(); } catch {}
+      const msg = handle
+        ? `Мораш бити пријављен да би видео налог @${handle}.`
+        : 'Мораш бити пријављен да би видео овај налог.';
+      if (noticeText) noticeText.textContent = msg;
+      if (notice) notice.hidden = false;
+      if (!state.authNoticeShown) {
+        state.authNoticeShown = true;
+        toast(msg, 'error');
+      }
+    } else if (!manualLogout && (p === '/liste' || p.startsWith('/liste/'))) {
+      if (noticeText) noticeText.textContent = 'Мораш бити пријављен да би приступио овој страници.';
+      if (notice) notice.hidden = false;
+    } else {
+      if (notice) notice.hidden = true;
+      state.authNoticeShown = false;
+    }
+
     $('#login-username').focus();
     icons();
   }
@@ -131,11 +157,14 @@
       state.account = me;
       updateTopbarAvatar();
     }
+    state.authNoticeShown = false;
+    if ($('#login-notice')) $('#login-notice').hidden = true;
+    const bg = Promise.all([loadRates(), loadHistory()]);
+    const routing = routeTo(window.location.pathname);
     $('#splash').classList.add('is-hidden');
     $('#login-view').hidden = true;
     $('#app-view').hidden = false;
-    await Promise.all([loadRates(), loadHistory()]);
-    await routeTo(window.location.pathname);
+    await Promise.all([routing, bg]);
   }
 
   // ---------------------------------------------------------------
@@ -166,6 +195,7 @@
     } catch {
       state.history = [];
     }
+    renderHistory();
   }
 
   async function load() {
@@ -449,6 +479,7 @@
   const txDialog = $('#tx-dialog');
 
   function openModal(kind = 'expense', editItem = null, preset = {}) {
+    closeSettingsMenu();
     // Нема ниједног Кешкића → прво мора Кешкић, а таб се усклађује са формом
     const hasK = state.data && state.data.summary && (state.data.summary.keshkici || []).some((k) => !k.dropped);
     if (kind === 'expense' && !editItem && !hasK) {
@@ -697,7 +728,7 @@
   // Извоз / увоз података
   // ---------------------------------------------------------------
   async function exportData() {
-    $('#settings-menu').hidden = true;
+    closeSettingsMenu();
     try {
       const res = await fetch('/api/export', { credentials: 'same-origin' });
       if (res.status === 401) { showLogin(); return; }
@@ -750,89 +781,255 @@
   // ---------------------------------------------------------------
   // Дропдаун Подешавања
   // ---------------------------------------------------------------
-  function toggleSettingsMenu() {
+  function closeSettingsMenu() {
     const menu = $('#settings-menu');
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      $('#settings-trigger')?.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function toggleSettingsMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = $('#settings-menu');
+    if (!menu) return;
     const open = menu.hidden;
     menu.hidden = !open;
+    $('#settings-trigger')?.setAttribute('aria-expanded', String(open));
     if (open) {
       updateThemeLabel();
-      icons();
-      const close = (e) => {
-        if (!e.target.closest('#settings-dropdown')) {
-          menu.hidden = true;
-          document.removeEventListener('click', close);
-        }
-      };
-      setTimeout(() => document.addEventListener('click', close), 0);
+      if (menu.querySelector('[data-lucide]')) icons();
     }
   }
 
   // ---------------------------------------------------------------
-  // Налог (Аватар, име, лозинка)
+  // Профили корисника (/u/@korisnik) и налог
   // ---------------------------------------------------------------
-  function openAccountDialog() {
-    $('#settings-menu').hidden = true;
-    const d = $('#account-dialog');
-    const a = state.account || {};
-    $('#acct-display-name').value = a.displayName || '';
-    updateAvatarPreview(a.avatar || '');
-    $('#acct-error').hidden = true;
-    $('#pw-current').value = '';
-    $('#pw-next').value = '';
-    $('#pw-error').hidden = true;
-    d.showModal();
-    icons();
+  const MONTHS_GEN = [
+    'јануара', 'фебруара', 'марта', 'априла', 'маја', 'јуна',
+    'јула', 'августа', 'септембра', 'октобра', 'новембра', 'децембра',
+  ];
+
+  function formatMemberSince(s) {
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return 'недавно';
+    const [y, m, d] = s.split('-').map(Number);
+    const mName = MONTHS_GEN[m - 1];
+    return mName ? `${d}. ${mName} ${y}.` : s;
+  }
+
+  const isHttpUrl = (u) => /^https?:\/\/\S+$/i.test(String(u || '').trim());
+
+  function setAvatarBox(el, url, altText = 'Аватар') {
+    if (!el) return;
+    const clean = String(url || '').trim();
+    const fallback = () => {
+      if (el.dataset.avatarSrc === '__fallback__' && el.querySelector('svg, [data-lucide]')) return;
+      el.dataset.avatarSrc = '__fallback__';
+      el.innerHTML = '<i data-lucide="user"></i>';
+      icons();
+    };
+    if (!isHttpUrl(clean)) {
+      fallback();
+      return;
+    }
+    if (el.dataset.avatarSrc === clean && el.querySelector('img')) {
+      el.querySelector('img').alt = altText;
+      return;
+    }
+    el.dataset.avatarSrc = clean;
+    const img = document.createElement('img');
+    img.alt = altText;
+    img.draggable = false;
+    img.addEventListener('error', fallback, { once: true });
+    img.src = clean;
+    el.replaceChildren(img);
+  }
+
+  function setBannerBox(el, url) {
+    if (!el) return;
+    const clean = String(url || '').trim();
+    if (!isHttpUrl(clean)) {
+      delete el.dataset.bannerSrc;
+      el.innerHTML = '';
+      return;
+    }
+    if (el.dataset.bannerSrc === clean && el.querySelector('img')) return;
+    el.dataset.bannerSrc = clean;
+    el.innerHTML = '';
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.addEventListener('error', () => {
+      delete el.dataset.bannerSrc;
+      img.remove();
+    }, { once: true });
+    img.src = clean;
+    el.appendChild(img);
   }
 
   function updateTopbarAvatar() {
-    const el = $('#topbar-avatar');
-    if (!el) return;
     const a = state.account || {};
-    if (a.avatar) {
-      el.innerHTML = `<img src="${esc(a.avatar)}" alt="Аватар">`;
-    } else {
-      el.innerHTML = '<i data-lucide="user"></i>';
-      icons();
-    }
+    setAvatarBox($('#topbar-avatar'), a.avatar, a.displayName || a.username || 'Аватар');
     const nameEl = $('#menu-user-name');
-    if (nameEl) {
-      nameEl.textContent = a.displayName || a.username || 'admin';
-    }
+    if (nameEl) nameEl.textContent = a.displayName || a.username || 'admin';
     const handleEl = $('#menu-user-handle');
-    if (handleEl) {
-      handleEl.textContent = '@' + (a.username || 'admin');
-    }
+    if (handleEl) handleEl.textContent = '@' + (a.username || 'admin');
   }
 
-  function updateAvatarPreview(src) {
-    const el = $('#acct-avatar-preview');
-    if (src) {
-      el.innerHTML = `<img src="${esc(src)}" alt="Аватар">`;
-    } else {
-      el.innerHTML = '<i data-lucide="user" class="acct-avatar-placeholder"></i>';
-      icons();
-    }
+  function openMyProfile() {
+    closeSettingsMenu();
+    const uname = (state.account && state.account.username) || 'admin';
+    navigate(`/u/@${encodeURIComponent(uname)}`);
   }
 
-  async function saveAccount(e) {
-    e.preventDefault();
-    const err = $('#acct-error');
-    err.hidden = true;
-    const body = { displayName: $('#acct-display-name').value.trim() };
-    // If avatar was changed (stored in data attr)
-    const preview = $('#acct-avatar-preview');
-    if (preview.dataset.pending !== undefined) {
-      body.avatar = preview.dataset.pending;
-      delete preview.dataset.pending;
+  async function loadProfilePage(uname, seq) {
+    const box = $('#profile-container');
+    if (!box) return;
+    if (!uname) {
+      renderProfileNotFound('');
+      return;
     }
     try {
-      state.account = await api('/api/account', { method: 'PUT', body });
-      updateTopbarAvatar();
-      toast('Налог ажуриран');
-      $('#account-dialog').close();
+      const p = await api(`/api/users/@${encodeURIComponent(uname)}`);
+      if (seq && seq !== routeSeq) return;
+      state.currentProfile = p;
+      document.title = `Keshk >> @${p.username}`;
+      renderProfilePage(p);
     } catch (ex) {
-      if (!(ex instanceof Unauthorized)) { err.textContent = ex.message; err.hidden = false; }
+      if (ex instanceof Unauthorized || (seq && seq !== routeSeq)) return;
+      state.currentProfile = null;
+      document.title = 'Keshk >> Профил';
+      renderProfileNotFound(uname);
     }
+  }
+
+  function renderProfileNotFound(uname) {
+    const box = $('#profile-container');
+    if (!box) return;
+    box.innerHTML = `
+      <div class="card lists-page-empty">
+        <span class="lists-page-empty-icon"><i data-lucide="user-x"></i></span>
+        <h3>Корисник није пронађен</h3>
+        <p>${uname ? `Налог <b>@${esc(uname)}</b> не постоји.` : 'Тражени налог не постоји.'}</p>
+        <button id="btn-notfound-home" class="btn btn-outline btn-sm" type="button">
+          <i data-lucide="arrow-left"></i><span>Назад на контролну таблу</span>
+        </button>
+      </div>`;
+    icons();
+  }
+
+  function renderProfilePage(p) {
+    const box = $('#profile-container');
+    if (!box || !p) return;
+    const title = p.displayName || p.username;
+    const bioHtml = p.bio
+      ? `<p class="profile-bio">${esc(p.bio)}</p>`
+      : `<p class="profile-bio is-empty">${p.isSelf ? 'Још увек ниси додао опис профила.' : 'Корисник није додао опис.'}</p>`;
+
+    box.innerHTML = `
+      <section class="card profile-card">
+        <div class="profile-banner" id="profile-banner-box"></div>
+        <div class="profile-body">
+          <div class="profile-top">
+            <div class="profile-avatar" id="profile-avatar-box">
+              <i data-lucide="user"></i>
+            </div>
+            <div class="profile-actions">
+              <button class="btn btn-ghost btn-icon btn-sm" type="button" id="btn-copy-profile" title="Копирај линк профила" aria-label="Копирај линк профила">
+                <i data-lucide="link-2"></i>
+              </button>
+              ${p.isSelf ? `
+                <button class="btn btn-outline btn-sm" type="button" id="btn-edit-profile">
+                  <i data-lucide="pencil"></i><span>Уреди профил</span>
+                </button>
+                <button class="btn btn-outline btn-sm" type="button" id="btn-open-pw">
+                  <i data-lucide="key"></i><span>Лозинка</span>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          <div class="profile-main">
+            <div class="profile-names">
+              <h1 class="profile-name">${esc(title)}</h1>
+              <span class="profile-handle">@${esc(p.username)}</span>
+            </div>
+            ${bioHtml}
+            <div class="profile-meta">
+              <span class="badge badge-outline">
+                <i data-lucide="calendar"></i>
+                <span>Члан од ${esc(formatMemberSince(p.memberSince))}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>`;
+
+    setBannerBox($('#profile-banner-box'), p.banner);
+    setAvatarBox($('#profile-avatar-box'), p.avatar, title);
+    icons();
+  }
+
+  function openProfileDialog() {
+    closeSettingsMenu();
+    const a = state.account || {};
+    $('#prof-display-name').value = a.displayName || '';
+    $('#prof-bio').value = a.bio || '';
+    $('#prof-avatar').value = a.avatar || '';
+    $('#prof-banner').value = a.banner || '';
+    $('#prof-error').hidden = true;
+    updateProfilePreview();
+    $('#profile-dialog').showModal();
+    icons();
+  }
+
+  function updateProfilePreview() {
+    setBannerBox($('#prof-preview-banner'), $('#prof-banner').value);
+    setAvatarBox($('#prof-preview-avatar'), $('#prof-avatar').value);
+  }
+
+  async function saveProfile(e) {
+    e.preventDefault();
+    const err = $('#prof-error');
+    err.hidden = true;
+    const fail = (msg) => { err.textContent = msg; err.hidden = false; };
+
+    const displayName = $('#prof-display-name').value.trim();
+    const bio = $('#prof-bio').value.trim();
+    const avatar = $('#prof-avatar').value.trim();
+    const banner = $('#prof-banner').value.trim();
+
+    if (avatar && !isHttpUrl(avatar)) return fail('Линк профилне слике мора почињати са https:// или http://');
+    if (banner && !isHttpUrl(banner)) return fail('Линк позадине мора почињати са https:// или http://');
+
+    const btn = $('#prof-save');
+    btn.disabled = true;
+    try {
+      state.account = await api('/api/account', {
+        method: 'PUT',
+        body: { displayName, bio, avatar, banner },
+      });
+      updateTopbarAvatar();
+      $('#profile-dialog').close();
+      toast('Профил сачуван');
+      if (state.currentProfile && state.currentProfile.isSelf) {
+        await loadProfilePage(state.account.username);
+      }
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) fail(ex.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function openPasswordDialog() {
+    closeSettingsMenu();
+    $('#pw-current').value = '';
+    $('#pw-next').value = '';
+    $('#pw-error').hidden = true;
+    $('#password-dialog').showModal();
+    icons();
+    setTimeout(() => $('#pw-current').focus(), 60);
   }
 
   async function changePassword(e) {
@@ -842,32 +1039,28 @@
     const current = $('#pw-current').value;
     const next = $('#pw-next').value;
     if (!current || !next) { err.textContent = 'Попуни оба поља.'; err.hidden = false; return; }
+    const btn = $('#pw-save');
+    btn.disabled = true;
     try {
       await api('/api/account/password', { method: 'PUT', body: { current, next } });
       toast('Лозинка промењена');
       $('#pw-current').value = '';
       $('#pw-next').value = '';
+      $('#password-dialog').close();
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) { err.textContent = ex.message; err.hidden = false; }
+    } finally {
+      btn.disabled = false;
     }
   }
 
-  function handleAvatarFile(file) {
-    if (!file) return;
-    if (file.size > 600 * 1024) { toast('Слика је превелика (макс. 600KB)', 'error'); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      updateAvatarPreview(dataUrl);
-      $('#acct-avatar-preview').dataset.pending = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  }
+  // ---------------------------------------------------------------
+  // Навигација и рутирање (/, /liste, /liste/:id, /u/@korisnik)
+  // ---------------------------------------------------------------
+  let routeSeq = 0;
 
-  // ---------------------------------------------------------------
-  // Навигација и рутирање (/ и /liste и /liste/:id)
-  // ---------------------------------------------------------------
   function navigate(path, push = true) {
+    closeSettingsMenu();
     if (push && window.location.pathname !== path) {
       history.pushState(null, '', path);
     }
@@ -875,44 +1068,71 @@
   }
 
   async function routeTo(path) {
+    const seq = ++routeSeq;
+    closeSettingsMenu();
     if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
 
     const vDash = $('#view-dashboard');
     const vLists = $('#view-lists');
     const vDetail = $('#view-list-detail');
+    const vProfile = $('#view-profile');
     const btnLists = $('#btn-lists');
 
     if (path === '/liste') {
       if (vDash) vDash.hidden = true;
       if (vDetail) vDetail.hidden = true;
+      if (vProfile) vProfile.hidden = true;
       if (vLists) vLists.hidden = false;
       if (btnLists) btnLists.classList.add('btn-primary');
       if (btnLists) btnLists.classList.remove('btn-outline');
       document.title = 'Keshk >> Листе за куповину';
-      if (!state.data) await load();
-      await loadListsPage();
+      await Promise.all([loadListsPage(), !state.data ? load() : null]);
     } else if (path.startsWith('/liste/')) {
       const id = path.slice('/liste/'.length);
       if (vDash) vDash.hidden = true;
       if (vLists) vLists.hidden = true;
+      if (vProfile) vProfile.hidden = true;
       if (vDetail) vDetail.hidden = false;
       if (btnLists) btnLists.classList.add('btn-primary');
       if (btnLists) btnLists.classList.remove('btn-outline');
-      if (!state.data) await load();
-      await loadListDetailPage(id);
+      await Promise.all([loadListDetailPage(id), !state.data ? load() : null]);
+    } else if (path === '/u' || path.startsWith('/u/')) {
+      if (vDash) vDash.hidden = true;
+      if (vLists) vLists.hidden = true;
+      if (vDetail) vDetail.hidden = true;
+      if (vProfile) vProfile.hidden = false;
+      if (btnLists) btnLists.classList.remove('btn-primary');
+      if (btnLists) btnLists.classList.add('btn-outline');
+
+      let raw = '';
+      if (path.startsWith('/u/')) {
+        try { raw = decodeURIComponent(path.slice(3)); } catch { raw = path.slice(3); }
+      }
+      let uname = raw.replace(/^@+/, '').split('/')[0].trim();
+      if (!uname && state.account && state.account.username) {
+        uname = state.account.username;
+      }
+      if (uname) {
+        const canonical = `/u/@${encodeURIComponent(uname)}`;
+        if (window.location.pathname !== canonical) {
+          history.replaceState(null, '', canonical);
+        }
+      }
+      await Promise.all([loadProfilePage(uname, seq), !state.data ? load() : null]);
     } else {
       if (vLists) vLists.hidden = true;
       if (vDetail) vDetail.hidden = true;
+      if (vProfile) vProfile.hidden = true;
       if (vDash) vDash.hidden = false;
       if (btnLists) btnLists.classList.remove('btn-primary');
       if (btnLists) btnLists.classList.add('btn-outline');
       document.title = 'Keshk >> месечни буџет';
       if (!state.data) await load();
     }
+    if (seq !== routeSeq) return;
     icons();
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
-
   // ---------------------------------------------------------------
   // Листе за куповину (/liste)
   // ---------------------------------------------------------------
@@ -1072,6 +1292,7 @@
 
   // --- Create / Edit list dialog ---
   function openListDialog(list = null) {
+    closeSettingsMenu();
     state.editingList = list;
     const d = $('#list-dialog');
     $('#list-dialog-title').textContent = list ? 'Измени листу' : 'Нова листа';
@@ -1265,29 +1486,47 @@
     });
 
     // Подешавања дропдаун
+    $('.topbar')?.addEventListener('dragstart', (e) => e.preventDefault());
     $('#settings-trigger').addEventListener('click', toggleSettingsMenu);
-    $('#menu-theme').addEventListener('click', () => { toggleTheme(); toggleSettingsMenu(); });
-    $('#menu-logout').addEventListener('click', async () => {
-      $('#settings-menu').hidden = true;
-      await api('/api/logout', { method: 'POST' }).catch(() => {});
-      showLogin();
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#settings-dropdown')) closeSettingsMenu();
     });
-    $('#menu-account').addEventListener('click', openAccountDialog);
+    $('#menu-theme').addEventListener('click', () => { toggleTheme(); closeSettingsMenu(); });
+    $('#menu-logout').addEventListener('click', async () => {
+      closeSettingsMenu();
+      await api('/api/logout', { method: 'POST' }).catch(() => {});
+      if (window.location.pathname !== '/') history.replaceState(null, '', '/');
+      showLogin({ manualLogout: true });
+    });
+    $('#menu-account').addEventListener('click', openMyProfile);
+    $('#menu-profile-header')?.addEventListener('click', openMyProfile);
     $('#menu-export').addEventListener('click', exportData);
-    $('#menu-import').addEventListener('click', () => { $('#settings-menu').hidden = true; $('#import-input').click(); });
+    $('#menu-import').addEventListener('click', () => { closeSettingsMenu(); $('#import-input').click(); });
     $('#import-input').addEventListener('change', (e) => {
       const file = e.target.files[0];
       e.target.value = '';
       importData(file);
     });
 
-    // Налог
-    $('#account-form').addEventListener('submit', saveAccount);
+    // Профил и лозинка
+    $('#profile-form').addEventListener('submit', saveProfile);
+    $('#prof-avatar').addEventListener('input', updateProfilePreview);
+    $('#prof-banner').addEventListener('input', updateProfilePreview);
     $('#password-form').addEventListener('submit', changePassword);
-    $('#acct-avatar-input').addEventListener('change', (e) => handleAvatarFile(e.target.files[0]));
-    $('#acct-avatar-remove').addEventListener('click', () => {
-      updateAvatarPreview('');
-      $('#acct-avatar-preview').dataset.pending = '';
+    $('#back-from-profile')?.addEventListener('click', () => navigate('/'));
+    $('#profile-container')?.addEventListener('click', async (e) => {
+      if (e.target.closest('#btn-edit-profile')) return openProfileDialog();
+      if (e.target.closest('#btn-open-pw')) return openPasswordDialog();
+      if (e.target.closest('#btn-notfound-home')) return navigate('/');
+      if (e.target.closest('#btn-copy-profile') && state.currentProfile) {
+        const url = `${window.location.origin}/u/@${encodeURIComponent(state.currentProfile.username)}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          toast('Линк профила копиран');
+        } catch {
+          toast(url);
+        }
+      }
     });
 
     // Навигација
@@ -1452,6 +1691,10 @@
     // Пречице на тастатури
     document.addEventListener('keydown', (e) => {
       if ($('#app-view').hidden) return;
+      if (e.key === 'Escape' && !$('#settings-menu').hidden) {
+        closeSettingsMenu();
+        return;
+      }
       if (e.target.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
       if (document.querySelector('dialog[open]')) return;
       const k = e.key.toLowerCase();

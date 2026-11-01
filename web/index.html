@@ -29,19 +29,23 @@
 
   <!-- ============ Splash ============ -->
   <div id="splash" class="splash" aria-hidden="true">
-    <span class="brand-mark brand-mark-lg brand-mark-img pulse"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk"></span>
+    <span class="brand-mark brand-mark-lg brand-mark-img pulse"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
   </div>
 
   <!-- ============ Пријава ============ -->
   <main id="login-view" class="login" hidden>
     <form id="login-form" class="card login-card" autocomplete="on" novalidate>
       <div class="brand brand-lg">
-        <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk"></span>
+        <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
         <span>Keshk</span>
       </div>
       <div class="login-copy">
         <h1>Добродошао назад</h1>
         <p class="muted">Пријави се да пратиш своје Кешкиће.</p>
+      </div>
+      <div id="login-notice" class="login-notice" role="status" hidden>
+        <i data-lucide="lock"></i>
+        <span id="login-notice-text">Мораш бити пријављен да би видео овај налог.</span>
       </div>
       <label class="field">
         <span class="label">Корисничко име</span>
@@ -65,8 +69,8 @@
   <div id="app-view" hidden>
     <header class="topbar">
       <div class="container topbar-inner">
-        <a class="brand" href="/" aria-label="Keshk почетна">
-          <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk"></span>
+        <a class="brand" href="/" aria-label="Keshk почетна" draggable="false">
+          <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
           <span>Keshk</span>
         </a>
         <div class="topbar-actions">
@@ -77,19 +81,19 @@
             <i data-lucide="list-checks"></i><span class="hide-mobile">Листе</span><kbd>L</kbd>
           </button>
           <div class="dropdown" id="settings-dropdown">
-            <button id="settings-trigger" class="topbar-avatar-btn" type="button" aria-label="Налог и подешавања" title="Налог и подешавања">
+            <button id="settings-trigger" class="topbar-avatar-btn" type="button" aria-label="Налог и подешавања" aria-haspopup="menu" aria-expanded="false" title="Налог и подешавања">
               <span class="topbar-avatar" id="topbar-avatar">
                 <i data-lucide="user"></i>
               </span>
             </button>
             <div class="dropdown-menu" id="settings-menu" hidden>
-              <div class="dropdown-header">
+              <button class="dropdown-header dropdown-header-btn" type="button" id="menu-profile-header">
                 <span class="dropdown-user-name" id="menu-user-name">admin</span>
                 <span class="dropdown-user-handle" id="menu-user-handle">@admin</span>
-              </div>
+              </button>
               <div class="dropdown-sep"></div>
               <button class="dropdown-item" type="button" id="menu-account">
-                <i data-lucide="user"></i><span>Налог</span>
+                <i data-lucide="user"></i><span>Профил</span>
               </button>
               <button class="dropdown-item" type="button" id="menu-export">
                 <i data-lucide="download"></i><span>Извези податке</span>
@@ -239,6 +243,12 @@
       </div>
     </main>
 
+    <!-- ============ Страница: Профил корисника (/u/@korisnik) ============ -->
+    <main id="view-profile" class="container main profile-page" hidden>
+      <button class="link-back" id="back-from-profile" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+      <div id="profile-container"></div>
+    </main>
+
     <footer class="site-footer">
       <a href="https://git.crnbg.org/vltc/keshk" target="_blank" rel="noopener noreferrer"><i data-lucide="git-branch"></i><span>Made by vltc</span></a>
     </footer>
@@ -330,55 +340,73 @@
     </form>
   </dialog>
 
-  <!-- ============ Дијалог: Налог ============ -->
-  <dialog id="account-dialog" class="dialog dialog-sm" aria-labelledby="account-title">
-    <form id="account-form" class="dialog-body" novalidate>
+  <!-- ============ Дијалог: Уреди профил ============ -->
+  <dialog id="profile-dialog" class="dialog" aria-labelledby="profile-dialog-title">
+    <form id="profile-form" class="dialog-body" novalidate>
       <div class="dialog-head">
-        <h3 id="account-title">Налог</h3>
+        <h3 id="profile-dialog-title">Уреди профил</h3>
         <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
       </div>
-      <div class="acct-avatar-row">
-        <div class="acct-avatar" id="acct-avatar-preview">
-          <i data-lucide="user" class="acct-avatar-placeholder"></i>
-        </div>
-        <div class="acct-avatar-actions">
-          <label class="btn btn-outline btn-sm" for="acct-avatar-input">
-            <i data-lucide="upload"></i><span>Промени слику</span>
-          </label>
-          <button class="btn btn-ghost btn-sm" type="button" id="acct-avatar-remove"><i data-lucide="trash-2"></i><span>Уклони</span></button>
-          <input type="file" id="acct-avatar-input" accept="image/jpeg,image/png,image/webp" hidden>
+
+      <div class="prof-preview">
+        <div class="prof-preview-banner" id="prof-preview-banner"></div>
+        <div class="prof-preview-avatar" id="prof-preview-avatar">
+          <i data-lucide="user"></i>
         </div>
       </div>
+
       <label class="field">
         <span class="label">Име за приказ</span>
-        <input id="acct-display-name" class="input" placeholder="нпр. Милош" maxlength="40" autocomplete="off">
+        <input id="prof-display-name" class="input" placeholder="нпр. Милош" maxlength="40" autocomplete="off">
       </label>
-      <p id="acct-error" class="form-error" role="alert" hidden></p>
+
+      <label class="field">
+        <span class="label">Опис</span>
+        <textarea id="prof-bio" class="input textarea" rows="3" maxlength="240" placeholder="Нешто кратко о теби…"></textarea>
+      </label>
+
+      <label class="field">
+        <span class="label">Профилна слика (линк)</span>
+        <input id="prof-avatar" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+      </label>
+
+      <label class="field">
+        <span class="label">Позадина профила (линк)</span>
+        <input id="prof-banner" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+        <span class="field-hint"><i data-lucide="link"></i>Директан линк до слике са интернета. Остави празно за уклањање.</span>
+      </label>
+
+      <p id="prof-error" class="form-error" role="alert" hidden></p>
+
       <div class="dialog-foot">
         <button class="btn btn-outline" type="button" data-close>Откажи</button>
-        <button id="acct-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span>Сачувај</span></button>
+        <button id="prof-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span>Сачувај профил</span></button>
       </div>
     </form>
-    <div class="dialog-section">
-      <h4 class="dialog-section-title">Промена лозинке</h4>
-      <form id="password-form" class="dialog-body" novalidate>
-        <label class="field">
-          <span class="label">Тренутна лозинка</span>
-          <input id="pw-current" class="input" type="password" autocomplete="current-password">
-        </label>
-        <label class="field">
-          <span class="label">Нова лозинка</span>
-          <input id="pw-next" class="input" type="password" autocomplete="new-password" minlength="6">
-        </label>
-        <p id="pw-error" class="form-error" role="alert" hidden></p>
-        <div class="dialog-foot">
-          <button id="pw-save" class="btn btn-primary btn-sm" type="submit"><i data-lucide="key"></i><span>Промени лозинку</span></button>
-        </div>
-      </form>
-    </div>
   </dialog>
 
-
+  <!-- ============ Дијалог: Промена лозинке ============ -->
+  <dialog id="password-dialog" class="dialog dialog-sm" aria-labelledby="password-dialog-title">
+    <form id="password-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="password-dialog-title">Промена лозинке</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <label class="field">
+        <span class="label">Тренутна лозинка</span>
+        <input id="pw-current" class="input" type="password" autocomplete="current-password" required>
+      </label>
+      <label class="field">
+        <span class="label">Нова лозинка</span>
+        <input id="pw-next" class="input" type="password" autocomplete="new-password" minlength="6" required>
+      </label>
+      <p id="pw-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="pw-save" class="btn btn-primary" type="submit"><i data-lucide="key"></i><span>Промени лозинку</span></button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- ============ Дијалог: Нова/Измена листе ============ -->
   <dialog id="list-dialog" class="dialog dialog-sm" aria-labelledby="list-dialog-title">

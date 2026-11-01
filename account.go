@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -16,11 +17,15 @@ import (
 
 const (
 	settingDisplayName = "display_name"
-	settingAvatar      = "avatar"
+	settingAvatarURL   = "avatar_url"
+	settingBannerURL   = "banner_url"
+	settingBio         = "bio"
+	settingMemberSince = "member_since"
 	settingPassHash    = "password_hash"
 
-	maxAvatarLen = 600 * 1024 // data URL (base64) — клијент шаље 256x256 JPEG
-	pbkdf2Iter   = 210000
+	maxImageURLLen = 500
+	maxBioRunes    = 240
+	pbkdf2Iter     = 210000
 )
 
 // ---------------------------------------------------------------------
@@ -44,6 +49,29 @@ func (s *Store) SetSetting(key, value string) error {
 		INSERT INTO settings (key, value) VALUES (?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// EnsureMemberSince обезбеђује трајно забележен датум учлањења (YYYY-MM-DD).
+// За постојећу базу узима најранији датум из записа, а за празну данашњи дан.
+func (s *Store) EnsureMemberSince(now time.Time) string {
+	if cur := s.GetSetting(settingMemberSince); cur != "" {
+		if _, err := time.Parse("2006-01-02", cur); err == nil {
+			return cur
+		}
+	}
+	var earliest string
+	_ = s.db.QueryRow(`
+		SELECT COALESCE(MIN(d), '') FROM (
+			SELECT month || '-01' AS d FROM keshkici WHERE length(month) = 7
+			UNION ALL SELECT substr(created_at, 1, 10) AS d FROM keshkici WHERE length(created_at) >= 10
+			UNION ALL SELECT date AS d FROM transactions WHERE length(date) = 10
+			UNION ALL SELECT substr(created_at, 1, 10) AS d FROM shopping_lists WHERE length(created_at) >= 10
+		)`).Scan(&earliest)
+	if _, err := time.Parse("2006-01-02", earliest); err != nil {
+		earliest = now.Format("2006-01-02")
+	}
+	_ = s.SetSetting(settingMemberSince, earliest)
+	return earliest
 }
 
 // ---------------------------------------------------------------------
@@ -84,22 +112,38 @@ func verifyPassword(encoded, pw string) bool {
 }
 
 // ---------------------------------------------------------------------
-// HTTP: Налог
+// HTTP: Налог и профили корисника (/u/@korisnik)
 // ---------------------------------------------------------------------
 
 type accountInfo struct {
 	Username        string  `json:"username"`
 	DisplayName     string  `json:"displayName"`
 	Avatar          string  `json:"avatar"`
+	Banner          string  `json:"banner"`
+	Bio             string  `json:"bio"`
+	MemberSince     string  `json:"memberSince"`
 	DefaultKeshkic  float64 `json:"defaultKeshkic"`
 	PasswordChanged bool    `json:"passwordChanged"`
+}
+
+type userProfile struct {
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Avatar      string `json:"avatar"`
+	Banner      string `json:"banner"`
+	Bio         string `json:"bio"`
+	MemberSince string `json:"memberSince"`
+	IsSelf      bool   `json:"isSelf"`
 }
 
 func (h *Handlers) account() accountInfo {
 	return accountInfo{
 		Username:        h.cfg.Username,
 		DisplayName:     h.store.GetSetting(settingDisplayName),
-		Avatar:          h.store.GetSetting(settingAvatar),
+		Avatar:          h.store.GetSetting(settingAvatarURL),
+		Banner:          h.store.GetSetting(settingBannerURL),
+		Bio:             h.store.GetSetting(settingBio),
+		MemberSince:     h.store.EnsureMemberSince(time.Now()),
 		DefaultKeshkic:  h.cfg.DefaultKeshkic,
 		PasswordChanged: h.store.GetSetting(settingPassHash) != "",
 	}
@@ -109,20 +153,51 @@ func (h *Handlers) Me(c fiber.Ctx) error {
 	return c.JSON(h.account())
 }
 
-func validAvatar(a string) bool {
-	for _, p := range []string{"data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,"} {
-		if strings.HasPrefix(a, p) {
-			return true
-		}
+// GetUser: GET /api/users/:handle (захтева пријаву преко Auth middleware-а).
+// Прихвата и "@admin" и "admin". Спремно за више налога касније.
+func (h *Handlers) GetUser(c fiber.Ctx) error {
+	raw, err := url.PathUnescape(c.Params("handle"))
+	if err != nil {
+		raw = c.Params("handle")
 	}
-	return false
+	username := strings.TrimPrefix(strings.TrimSpace(raw), "@")
+	if username == "" {
+		return fail(c, fiber.StatusBadRequest, "Неисправно корисничко име")
+	}
+	if !strings.EqualFold(username, h.cfg.Username) {
+		return fail(c, fiber.StatusNotFound, "Корисник није пронађен")
+	}
+	a := h.account()
+	return c.JSON(userProfile{
+		Username:    a.Username,
+		DisplayName: a.DisplayName,
+		Avatar:      a.Avatar,
+		Banner:      a.Banner,
+		Bio:         a.Bio,
+		MemberSince: a.MemberSince,
+		IsSelf:      true,
+	})
 }
 
-// UpdateAccount: PUT /api/account {"displayName"?: "...", "avatar"?: "data:image/...;base64,..." | ""}
+func validImageURL(raw string) bool {
+	if len(raw) > maxImageURLLen {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return (scheme == "http" || scheme == "https") && u.Host != ""
+}
+
+// UpdateAccount: PUT /api/account {"displayName"?, "avatar"?, "banner"?, "bio"?}
 func (h *Handlers) UpdateAccount(c fiber.Ctx) error {
 	var body struct {
 		DisplayName *string `json:"displayName"`
 		Avatar      *string `json:"avatar"`
+		Banner      *string `json:"banner"`
+		Bio         *string `json:"bio"`
 	}
 	if err := c.Bind().JSON(&body); err != nil {
 		return fail(c, fiber.StatusBadRequest, "Неисправан захтев")
@@ -136,17 +211,30 @@ func (h *Handlers) UpdateAccount(c fiber.Ctx) error {
 			return internal(c, err)
 		}
 	}
+	if body.Bio != nil {
+		bio := strings.TrimSpace(strings.ReplaceAll(*body.Bio, "\r\n", "\n"))
+		if utf8.RuneCountInString(bio) > maxBioRunes {
+			return fail(c, fiber.StatusBadRequest, "Опис је предугачак (највише 240 знакова)")
+		}
+		if err := h.store.SetSetting(settingBio, bio); err != nil {
+			return internal(c, err)
+		}
+	}
 	if body.Avatar != nil {
 		a := strings.TrimSpace(*body.Avatar)
-		if a != "" {
-			if !validAvatar(a) {
-				return fail(c, fiber.StatusBadRequest, "Неподржан формат слике (JPEG, PNG или WebP)")
-			}
-			if len(a) > maxAvatarLen {
-				return fail(c, fiber.StatusBadRequest, "Слика је превелика")
-			}
+		if a != "" && !validImageURL(a) {
+			return fail(c, fiber.StatusBadRequest, "Профилна слика мора бити важећи http:// или https:// линк")
 		}
-		if err := h.store.SetSetting(settingAvatar, a); err != nil {
+		if err := h.store.SetSetting(settingAvatarURL, a); err != nil {
+			return internal(c, err)
+		}
+	}
+	if body.Banner != nil {
+		b := strings.TrimSpace(*body.Banner)
+		if b != "" && !validImageURL(b) {
+			return fail(c, fiber.StatusBadRequest, "Позадина мора бити важећи http:// или https:// линк")
+		}
+		if err := h.store.SetSetting(settingBannerURL, b); err != nil {
 			return internal(c, err)
 		}
 	}

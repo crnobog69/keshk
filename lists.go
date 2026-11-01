@@ -52,6 +52,7 @@ func (s *Store) migrateExtra() error {
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);
+	DELETE FROM settings WHERE key = 'avatar';
 	CREATE TABLE IF NOT EXISTS shopping_lists (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
 		title       TEXT    NOT NULL,

@@ -271,6 +271,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); curs
 .brand-lg .brand-mark { width: 2.5rem; height: 2.5rem; border-radius: .75rem; }
 .brand-mark-lg { width: 3.5rem; height: 3.5rem; border-radius: 1rem; }
 .brand-mark-lg svg.lucide { width: 1.6rem; height: 1.6rem; }
+.brand { -webkit-user-drag: none; touch-action: manipulation; }
+.brand-mark, .brand-mark * { pointer-events: none; -webkit-user-drag: none; user-select: none; }
 .brand-mark-img { background: none; box-shadow: none; overflow: hidden; }
 .brand-logo { width: 100%; height: 100%; object-fit: contain; display: block; }
 
@@ -294,7 +296,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); curs
    Topbar
    ========================================================= */
 .topbar {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: 0; z-index: 40;
   background: hsl(var(--background) / .7);
   backdrop-filter: saturate(1.4) blur(14px);
   -webkit-backdrop-filter: saturate(1.4) blur(14px);
@@ -792,15 +794,17 @@ html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  padding: .2rem;
+  margin: -.2rem;
   border: 0;
   background: transparent;
   cursor: pointer;
   border-radius: 999px;
   -webkit-tap-highlight-color: transparent;
-  transition: transform .15s var(--ease), opacity .15s;
+  touch-action: manipulation;
+  transition: opacity .15s;
 }
-.topbar-avatar-btn:active { transform: scale(.93); }
+.topbar-avatar-btn:active { opacity: .82; }
 .topbar-avatar-btn:focus, .topbar-avatar-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring) / .7);
@@ -819,6 +823,12 @@ html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35
 }
 .topbar-avatar-btn:hover .topbar-avatar {
   border-color: hsl(var(--muted-foreground) / .6);
+}
+.topbar-avatar,
+.topbar-avatar * {
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .topbar-avatar img {
   width: 100%;
@@ -875,21 +885,132 @@ html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35
 .dropdown-item.is-danger svg.lucide { color: hsl(var(--danger)); }
 .dropdown-sep { height: 1px; margin: .25rem .5rem; background: hsl(var(--border)); }
 
-/* =========================================================
-   Account dialog
-   ========================================================= */
-.acct-avatar-row { display: flex; align-items: center; gap: 1rem; }
-.acct-avatar {
-  width: 4rem; height: 4rem; border-radius: 50%; overflow: hidden; flex-shrink: 0;
-  display: grid; place-items: center;
-  background: hsl(var(--muted)); border: 2px solid hsl(var(--border));
+.dropdown-header-btn {
+  width: 100%; text-align: left; border: 0; background: none;
+  border-radius: calc(var(--radius) - .35rem); cursor: pointer;
+  transition: background .12s;
 }
-.acct-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.acct-avatar-placeholder { width: 1.6rem; height: 1.6rem; color: hsl(var(--muted-foreground)); }
-.acct-avatar-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
-.dialog-section { border-top: 1px solid hsl(var(--border)); }
-.dialog-section-title { padding: 1rem 1.5rem .25rem; font-size: .8125rem; font-weight: 600; color: hsl(var(--muted-foreground)); }
+.dropdown-header-btn:hover { background: hsl(var(--accent)); }
 
+.textarea {
+  height: auto; min-height: 4.75rem; padding: .6rem .75rem;
+  resize: vertical; line-height: 1.5;
+}
+
+.login-notice {
+  display: flex; align-items: flex-start; gap: .6rem;
+  padding: .65rem .8rem; border-radius: calc(var(--radius) - .25rem);
+  border: 1px solid hsl(var(--warning) / .35);
+  background: hsl(var(--warning) / .1);
+  color: hsl(var(--foreground));
+  font-size: .8125rem; line-height: 1.45;
+  animation: fade-in .25s var(--ease);
+}
+.login-notice svg.lucide {
+  width: .95rem; height: .95rem; margin-top: .12rem;
+  color: hsl(var(--warning)); flex-shrink: 0;
+}
+
+/* =========================================================
+   Profile page (/u/@korisnik) & Edit dialog
+   ========================================================= */
+.profile-page { animation: fade-in .2s var(--ease); }
+
+.profile-card { overflow: hidden; padding: 0; }
+.profile-banner {
+  position: relative; width: 100%;
+  height: clamp(10.5rem, 22vw, 15.5rem);
+  overflow: hidden;
+  border-bottom: 1px solid hsl(var(--border));
+  background:
+    radial-gradient(55% 95% at 18% 20%, hsl(var(--glow-a) / .16), transparent 70%),
+    radial-gradient(50% 90% at 82% 25%, hsl(var(--glow-b) / .18), transparent 70%),
+    linear-gradient(180deg, hsl(var(--muted) / .75), hsl(var(--card)));
+}
+.profile-banner img { width: 100%; height: 100%; object-fit: cover; display: block; -webkit-user-drag: none; user-select: none; }
+
+.profile-body {
+  padding: 0 clamp(1.25rem, 3vw, 2rem) clamp(1.5rem, 3vw, 2rem);
+}
+.profile-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+}
+.profile-avatar {
+  width: 8.5rem; height: 8.5rem; border-radius: 50%;
+  margin-top: -4.25rem; position: relative; z-index: 2; flex-shrink: 0;
+  overflow: hidden; display: grid; place-items: center;
+  background: hsl(var(--muted));
+  border: 5px solid hsl(var(--card));
+  box-shadow: var(--shadow);
+  color: hsl(var(--muted-foreground));
+}
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; -webkit-user-drag: none; user-select: none; }
+.profile-avatar svg.lucide { width: 3.1rem; height: 3.1rem; }
+
+.profile-actions {
+  display: flex; align-items: center; gap: .5rem;
+  padding-top: 1.05rem; margin-left: auto; flex-wrap: wrap;
+}
+.profile-main {
+  margin-top: 1rem; display: grid; gap: .875rem;
+}
+.profile-names { display: grid; gap: .15rem; }
+.profile-name {
+  font-size: clamp(1.375rem, 1.15rem + .8vw, 1.75rem);
+  font-weight: 700; letter-spacing: -.03em; line-height: 1.2;
+}
+.profile-handle {
+  font-size: .9375rem; font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+.profile-bio {
+  font-size: .9375rem; line-height: 1.6;
+  color: hsl(var(--foreground) / .92);
+  max-width: 48rem;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.profile-bio.is-empty {
+  font-size: .875rem; color: hsl(var(--muted-foreground));
+}
+.profile-meta {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  padding-top: 1rem; border-top: 1px solid hsl(var(--border));
+}
+
+.prof-preview {
+  position: relative;
+  border-radius: calc(var(--radius) - .15rem);
+  border: 1px solid hsl(var(--border));
+  overflow: hidden;
+  background: hsl(var(--background) / .4);
+  padding-bottom: .75rem;
+}
+.prof-preview-banner {
+  height: 5.25rem;
+  border-bottom: 1px solid hsl(var(--border));
+  overflow: hidden;
+  background:
+    radial-gradient(55% 95% at 18% 20%, hsl(var(--glow-a) / .16), transparent 70%),
+    radial-gradient(50% 90% at 82% 25%, hsl(var(--glow-b) / .18), transparent 70%),
+    linear-gradient(180deg, hsl(var(--muted) / .75), hsl(var(--card)));
+}
+.prof-preview-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.prof-preview-avatar {
+  width: 3.75rem; height: 3.75rem; border-radius: 50%;
+  margin: -1.875rem 0 0 1rem; position: relative; z-index: 2;
+  overflow: hidden; display: grid; place-items: center;
+  background: hsl(var(--muted)); border: 3px solid hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+}
+.prof-preview-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.prof-preview-avatar svg.lucide { width: 1.4rem; height: 1.4rem; }
+
+@media (max-width: 640px) {
+  .profile-avatar { width: 6.5rem; height: 6.5rem; margin-top: -3.25rem; border-width: 4px; }
+  .profile-avatar svg.lucide { width: 2.35rem; height: 2.35rem; }
+  .profile-actions { padding-top: .65rem; }
+}
 /* =========================================================
    Shopping lists pages (/liste and /liste/:id)
    ========================================================= */
@@ -916,6 +1037,7 @@ html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35
 .page-title svg.lucide { width: 1.4rem; height: 1.4rem; color: hsl(var(--foreground)); }
 
 .link-back {
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: .4rem;
@@ -925,8 +1047,10 @@ html { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .35
   text-decoration: none;
   background: none;
   border: 0;
-  padding: 0;
-  margin-bottom: .6rem;
+  padding: .25rem .4rem;
+  margin: -.25rem -.4rem .35rem;
+  border-radius: .35rem;
+  touch-action: manipulation;
   cursor: pointer;
   transition: color .15s;
 }

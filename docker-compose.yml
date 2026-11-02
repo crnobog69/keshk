@@ -1,0 +1,12 @@
+services:
+  keshk:
+    image: ${KESHK_IMAGE:-ghcr.io/vltc/keshk:latest}
+    build: .
+    container_name: keshk
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Europe/Belgrade}
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"

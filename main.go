@@ -7,18 +7,40 @@ import (
 	"encoding/hex"
 	"io/fs"
 	"log"
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/static"
+	"github.com/joho/godotenv"
 )
 
 //go:embed web
 var webFS embed.FS
 
+func runHealthcheck() int {
+	_ = godotenv.Load()
+	port := env("PORT", "3000")
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
+}
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "-healthcheck" || os.Args[1] == "--healthcheck") {
+		os.Exit(runHealthcheck())
+	}
+
 	cfg := loadConfig()
 
 	store, err := openStore(cfg.DatabaseURL, cfg.DatabaseURLUnpooled)
@@ -50,6 +72,9 @@ func main() {
 
 	app := fiber.New(fiber.Config{AppName: "Keshk"})
 	app.Use(recoverer.New())
+	app.Get("/healthz", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
 	app.Use(logger.New())
 	app.Use(func(c fiber.Ctx) error {
 		c.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")

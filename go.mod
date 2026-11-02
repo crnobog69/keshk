@@ -6,6 +6,7 @@ require (
 	github.com/gofiber/fiber/v3 v3.6.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/joho/godotenv v1.5.1
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -29,5 +30,4 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )

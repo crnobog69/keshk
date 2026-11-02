@@ -90,7 +90,28 @@ go build -o keshk .
 | `T` / `Т` | Текући месец |
 | `←` `→` | Претходни / следећи месец |
 
-## Распоређивање на Raspberry Pi 5
+## Docker и GitHub Actions
+
+При сваком пушу на `main` / `master` или креирању `v*` ознаке (или ручно преко *Actions*), GitHub Actions (`.github/workflows/docker.yml`) аутоматски гради вишеархитектурну слику (`linux/amd64` и `linux/arm64`) на `distroless:nonroot` основи и објављује је на **GitHub Container Registry** (`ghcr.io/<корисник>/keshk:latest`).
+
+Повезивање и покретање преко **GitHub CLI (`gh`)**:
+
+```powershell
+gh auth login -s write:packages
+gh repo create keshk --private --source=. --remote=github --push
+gh run watch
+```
+
+Покретање готове слике на серверу или Raspberry Pi 5 помоћу `docker-compose.yml` и `.env`:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Здравље контејнера проверава уграђена рута `GET /healthz` (`/app/keshk -healthcheck`).
+
+## Распоређивање на Raspberry Pi 5 (без Docker-а)
 
 Са Windows-а можеш направити Linux ARM64 бинарни фајл:
 
@@ -104,18 +125,20 @@ scp keshk-rpi5-arm64 .env pi@raspberrypi:~/
 ## Структура пројекта
 
 ```text
-main.go        рутирање и покретање сервера
-config.go      учитавање .env / окружења
-store.go       Neon Postgres (pgx/v5): шема, индекси, Кешкићи, трошкови, месечни збирови
-lists.go       листе за куповину и њихове ставке
-account.go     корисници, позивнице, регистрација, профили, QR код, подешавања и Админ панел
-auth.go        сесије и провера администраторског приступа
-ratelimit.go   заштита пријаве и кода за регистрацију од погађања
-transfer.go    извоз / увоз резервне копије по кориснику (v1 / v2)
-rates.go       курсна листа (EUR, USD -> RSD)
-seed.go        пробни подаци за празну базу (KESHK_SEED=true)
-neon.ts        Neon инфраструктурна конфигурација
-web/           интерфејс (index.html, app.js, styles.css), уграђен у бинарни фајл
+main.go            рутирање, /healthz и покретање сервера
+config.go          учитавање .env / окружења
+store.go           Neon Postgres (pgx/v5): шема, индекси, Кешкићи, трошкови, месечни збирови
+lists.go           листе за куповину и њихове ставке
+account.go         корисници, позивнице, регистрација, профили, QR код, подешавања и Админ панел
+auth.go            сесије и провера администраторског приступа
+ratelimit.go       заштита пријаве и кода за регистрацију од погађања
+transfer.go        извоз / увоз резервне копије по кориснику (v1 / v2)
+rates.go           курсна листа (EUR, USD -> RSD)
+seed.go            пробни подаци за празну базу (KESHK_SEED=true)
+neon.ts            Neon инфраструктурна конфигурација
+Dockerfile         вишеархитектурна (amd64/arm64) distroless:nonroot слика
+docker-compose.yml покретање контејнера са .env подешавањима
+web/               интерфејс (index.html, app.js, styles.css), уграђен у бинарни фајл
 ```
 
 ## Тестови

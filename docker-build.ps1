@@ -94,6 +94,7 @@ if ($ghRemote) {
     Write-Host "[PUSH] Шаљем '$Branch' и '$tag' на GitHub ($ghRemote)..." -ForegroundColor Cyan
     git push $ghRemote $Branch $tag
     Write-Host "[OK] Покренут је GitHub Actions билд за ознаке :$tag и :latest" -ForegroundColor Green
+    Write-Host "[INFO] За праћење изградње уживо укуцај: gh run watch" -ForegroundColor Yellow
 } else {
     Write-Error "Није пронађен 'github' remote! Додај га једном са:`n  gh repo create keshk --private --source=. --remote=github"
 }

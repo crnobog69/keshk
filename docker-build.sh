@@ -62,6 +62,7 @@ if [[ -n "$GH_REMOTE" ]]; then
     echo "[PUSH] Шаљем '${BRANCH}' и '${TAG}' на GitHub (${GH_REMOTE})..."
     git push "$GH_REMOTE" "$BRANCH" "$TAG"
     echo "[OK] Покренут је GitHub Actions билд за ознаке :${TAG} и :latest"
+    echo "[INFO] За праћење изградње уживо укуцај: gh run watch"
 else
     echo "[ERROR] Није пронађен 'github' remote! Додај га једном са:" >&2
     echo "  gh repo create keshk --private --source=. --remote=github" >&2

@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 
 ENV CGO_ENABLED=0 \
@@ -12,9 +14,8 @@ RUN go mod download
 COPY *.go ./
 COPY web ./web
 
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
-RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
+RUN echo "Building Keshk for ${TARGETOS:-linux}/${TARGETARCH:-amd64}" && \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags="-s -w" -o /out/keshk .
 
 FROM gcr.io/distroless/static-debian12:nonroot

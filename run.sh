@@ -33,6 +33,23 @@ if [ ! -f ".env" ]; then
     fi
 fi
 
+# 3. Учитавање порта из .env (PORT из окружења има предност)
+if [ -z "${PORT:-}" ]; then
+    PORT=3000
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ ^[[:space:]]*PORT[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            value="${BASH_REMATCH[1]%%#*}"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            value="${value#\"}"; value="${value%\"}"
+            value="${value#\'}"; value="${value%\'}"
+            if [ -n "$value" ]; then
+                PORT="$value"
+            fi
+        fi
+    done < .env
+fi
+
 # 3. Креирање директоријума за базу ако не постоји
 mkdir -p data
 
@@ -43,6 +60,6 @@ chmod +x keshk
 
 # 5. Покретање
 echo "[START] Покрећем Keshk сервер..."
-echo "[INFO] Отвори у прегледачу: http://localhost:3000 (или http://<IP_adresa_malinice>:3000)"
+echo "[INFO] Отвори у прегледачу: http://localhost:${PORT} (или http://<IP_adresa_malinice>:${PORT})"
 pkill -x keshk 2>/dev/null || true
 exec ./keshk

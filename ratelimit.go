@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -9,26 +10,37 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-const (
-	loginMaxFails   = 5                // неуспешних покушаја по IP адреси
-	loginGlobalMax  = 50               // неуспешних покушаја укупно (заштита од distributed напада)
-	loginWindow     = 15 * time.Minute // прозор бројања и трајање блокаде
-)
-
 type failEntry struct {
 	count int
 	first time.Time
 }
 
-// LoginLimiter blocks an IP after too many failed logins within loginWindow.
-type LoginLimiter struct {
-	mu     sync.Mutex
-	byIP   map[string]*failEntry
-	global failEntry
+// RateLimiter блокира IP адресу (или глобално све захтеве) након превише неуспешних
+// покушаја у задатом временском прозору. Користи се и за пријаву и за код регистрације.
+type RateLimiter struct {
+	mu        sync.Mutex
+	maxPerIP  int
+	maxGlobal int
+	window    time.Duration
+	byIP      map[string]*failEntry
+	global    failEntry
 }
 
-func newLoginLimiter() *LoginLimiter {
-	return &LoginLimiter{byIP: map[string]*failEntry{}}
+func newRateLimiter(maxPerIP, maxGlobal int, window time.Duration) *RateLimiter {
+	return &RateLimiter{
+		maxPerIP:  maxPerIP,
+		maxGlobal: maxGlobal,
+		window:    window,
+		byIP:      map[string]*failEntry{},
+	}
+}
+
+func newLoginLimiter() *RateLimiter {
+	return newRateLimiter(5, 50, 15*time.Minute)
+}
+
+func newInviteLimiter() *RateLimiter {
+	return newRateLimiter(5, 30, 15*time.Minute)
 }
 
 // clientIP returns the real client IP. Behind a local Cloudflare Tunnel the
@@ -43,48 +55,52 @@ func clientIP(c fiber.Ctx) string {
 	return ip
 }
 
-func (e *failEntry) active(now time.Time) bool {
-	return e.count > 0 && now.Sub(e.first) < loginWindow
+func (e *failEntry) active(now time.Time, window time.Duration) bool {
+	return e.count > 0 && now.Sub(e.first) < window
 }
 
-// blocked reports whether ip may not attempt a login, and how long to wait.
-func (l *LoginLimiter) blocked(ip string) (bool, time.Duration) {
+// blocked reports whether ip may not attempt an action, and how long to wait.
+func (l *RateLimiter) blocked(ip string) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	// чишћење старих уноса
 	for k, e := range l.byIP {
-		if !e.active(now) {
+		if !e.active(now, l.window) {
 			delete(l.byIP, k)
 		}
 	}
-	if l.global.active(now) && l.global.count >= loginGlobalMax {
-		return true, loginWindow - now.Sub(l.global.first)
+	if l.global.active(now, l.window) && l.global.count >= l.maxGlobal {
+		return true, l.window - now.Sub(l.global.first)
 	}
-	if e, ok := l.byIP[ip]; ok && e.count >= loginMaxFails {
-		return true, loginWindow - now.Sub(e.first)
+	if e, ok := l.byIP[ip]; ok && e.count >= l.maxPerIP {
+		return true, l.window - now.Sub(e.first)
 	}
 	return false, 0
 }
 
-func (l *LoginLimiter) fail(ip string) {
+func (l *RateLimiter) fail(ip string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
 	e, ok := l.byIP[ip]
-	if !ok || !e.active(now) {
+	if !ok || !e.active(now, l.window) {
 		e = &failEntry{first: now}
 		l.byIP[ip] = e
 	}
 	e.count++
-	if !l.global.active(now) {
+	if !l.global.active(now, l.window) {
 		l.global = failEntry{first: now}
 	}
 	l.global.count++
 }
 
-func (l *LoginLimiter) success(ip string) {
+func (l *RateLimiter) success(ip string) {
 	l.mu.Lock()
 	delete(l.byIP, ip)
 	l.mu.Unlock()
+}
+
+func rejectRateLimited(c fiber.Ctx, wait time.Duration) error {
+	c.Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+	return fail(c, fiber.StatusTooManyRequests, "Превише неуспешних покушаја. Покушај поново за "+strconv.Itoa(int(wait.Minutes())+1)+" мин.")
 }

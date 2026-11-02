@@ -21,26 +21,32 @@ var webFS embed.FS
 func main() {
 	cfg := loadConfig()
 
-	store, err := openStore(cfg.DBPath)
+	store, err := openStore(cfg.DatabaseURL, cfg.DatabaseURLUnpooled)
 	if err != nil {
 		log.Fatalf("[ERROR] база: %v", err)
 	}
 	defer store.Close()
 
-	if cfg.ResetPassword {
-		if err := store.SetSetting(settingPassHash, ""); err == nil {
-			log.Println("[INFO] Лозинка враћена на вредност из .env (KESHK_RESET_PASSWORD)")
-		}
+	now := time.Now()
+	adminUser, err := store.EnsureAdminUser(cfg, now)
+	if err != nil {
+		log.Fatalf("[ERROR] иницијализација администратора: %v", err)
 	}
 
 	if cfg.Seed {
-		if err := seedDemo(store, time.Now()); err != nil {
+		if err := seedDemo(store, adminUser.ID, now); err != nil {
 			log.Fatalf("[ERROR] пробни подаци: %v", err)
 		}
 	}
-	store.EnsureMemberSince(time.Now())
 
-	h := &Handlers{cfg: cfg, store: store, rates: newRates(cfg.FallbackRates), auth: newAuth(cfg, store.GetSetting(settingPassHash)), limiter: newLoginLimiter()}
+	h := &Handlers{
+		cfg:           cfg,
+		store:         store,
+		rates:         newRates(cfg.FallbackRates),
+		auth:          newAuth(cfg, store),
+		limiter:       newLoginLimiter(),
+		inviteLimiter: newInviteLimiter(),
+	}
 
 	app := fiber.New(fiber.Config{AppName: "Keshk"})
 	app.Use(recoverer.New())
@@ -55,6 +61,10 @@ func main() {
 	api := app.Group("/api", h.auth.Middleware)
 	api.Post("/login", h.Login)
 	api.Post("/logout", h.Logout)
+	api.Post("/register/verify-code", h.VerifyInviteCode)
+	api.Post("/register/check-username", h.CheckUsername)
+	api.Post("/register", h.Register)
+
 	api.Get("/me", h.Me)
 	api.Get("/rates", h.Rates)
 	api.Get("/history", h.History)
@@ -68,10 +78,21 @@ func main() {
 	api.Put("/transactions/:id", h.UpdateTx)
 	api.Delete("/transactions/:id", h.DeleteTx)
 
-	// Налог и профили
+	// Налог, подешавања и профили
 	api.Put("/account", h.UpdateAccount)
 	api.Put("/account/password", h.ChangePassword)
+	api.Post("/account/clear-data", h.ClearAccountData)
+	api.Post("/account/deletion-code", h.CreateDeletionCode)
+	api.Get("/users/:handle/qr", h.GetUserQR)
 	api.Get("/users/:handle", h.GetUser)
+
+	// Админ панел (само први налог)
+	adminAPI := api.Group("/admin", h.auth.AdminMiddleware)
+	adminAPI.Get("/overview", h.AdminOverview)
+	adminAPI.Post("/invites", h.AdminCreateInvite)
+	adminAPI.Delete("/invites/:id", h.AdminDeleteInvite)
+	adminAPI.Delete("/users/:id/deletion-code", h.AdminClearDeletionCode)
+	adminAPI.Delete("/users/:id", h.AdminDeleteUser)
 
 	// Листе за куповину
 	api.Get("/lists", h.ListLists)
@@ -119,6 +140,10 @@ func main() {
 	app.Get("/liste/*", sendIndex)
 	app.Get("/u", sendIndex)
 	app.Get("/u/*", sendIndex)
+	app.Get("/podesavanja", sendIndex)
+	app.Get("/podesavanja/*", sendIndex)
+	app.Get("/admin", sendIndex)
+	app.Get("/admin/*", sendIndex)
 
 	web, err := fs.Sub(webFS, "web")
 	if err != nil {

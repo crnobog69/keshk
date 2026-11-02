@@ -32,7 +32,7 @@
     <span class="brand-mark brand-mark-lg brand-mark-img pulse"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
   </div>
 
-  <!-- ============ Пријава ============ -->
+  <!-- ============ Пријава и регистрација ============ -->
   <main id="login-view" class="login" hidden>
     <form id="login-form" class="card login-card" autocomplete="on" novalidate>
       <div class="brand brand-lg">
@@ -59,7 +59,130 @@
       <button id="login-submit" class="btn btn-primary btn-block btn-lg" type="submit">
         <span>Пријави се</span><i data-lucide="arrow-right"></i>
       </button>
+      <div class="login-alt">
+        <button id="btn-show-register" class="btn btn-outline btn-block" type="button">
+          <i data-lucide="key-round"></i><span>Имате код за регистрацију?</span>
+        </button>
+      </div>
     </form>
+
+    <!-- ============ Позивни код + Onboarding ============ -->
+    <div id="register-card" class="card login-card onboarding-card" hidden>
+      <div class="ob-top">
+        <div class="brand brand-lg">
+          <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
+          <span>Keshk</span>
+        </div>
+        <span id="ob-step-badge" class="badge badge-outline">Позивница</span>
+      </div>
+
+      <div id="ob-progress" class="ob-progress" aria-hidden="true" hidden>
+        <span id="ob-bar-1" class="ob-bar is-active"></span>
+        <span id="ob-bar-2" class="ob-bar"></span>
+      </div>
+
+      <!-- Корак 0: Унос кода за регистрацију -->
+      <form id="reg-code-form" class="ob-step" autocomplete="off" novalidate>
+        <div class="login-copy">
+          <h1>Имате код за регистрацију?</h1>
+          <p class="muted">Унеси једнократни код који ти је послао администратор.</p>
+        </div>
+        <label class="field">
+          <span class="label">Код за регистрацију</span>
+          <input id="reg-code" class="input input-code" name="invite-code" placeholder="XXXX-XXXX-XXXX" maxlength="16" spellcheck="false" autocapitalize="characters" autocomplete="off" required>
+        </label>
+        <p id="reg-code-error" class="form-error" role="alert" hidden></p>
+        <div class="ob-actions">
+          <button id="btn-back-to-login" class="btn btn-outline" type="button">
+            <i data-lucide="arrow-left"></i><span>Пријава</span>
+          </button>
+          <button id="reg-code-submit" class="btn btn-primary" type="submit">
+            <span>Настави</span><i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </form>
+
+      <!-- Корак 1/2: Корисничко име и лозинка -->
+      <form id="reg-account-form" class="ob-step" autocomplete="off" novalidate hidden>
+        <div class="login-copy">
+          <h1>Креирај свој налог</h1>
+          <p class="muted">Изабери корисничко име и постави своју лозинку.</p>
+        </div>
+        <label class="field">
+          <span class="label">Корисничко име</span>
+          <div class="input-prefix-wrap">
+            <span class="input-prefix" aria-hidden="true">@</span>
+            <input id="reg-username" class="input input-with-prefix" placeholder="korisnik" maxlength="24" spellcheck="false" autocapitalize="none" autocomplete="username" required>
+          </div>
+          <span class="field-hint"><i data-lucide="at-sign"></i>Латиница a–z, бројеви, тачка, цртица или доња црта.</span>
+        </label>
+        <label class="field">
+          <span class="label">Име за приказ <span class="muted">(опционо)</span></span>
+          <input id="reg-display-name" class="input" placeholder="нпр. Марко" maxlength="40" autocomplete="name">
+        </label>
+        <label class="field">
+          <span class="label">Лозинка</span>
+          <input id="reg-password" class="input" type="password" placeholder="Најмање 6 знакова" minlength="6" maxlength="128" autocomplete="new-password" required>
+        </label>
+        <label class="field">
+          <span class="label">Потврди лозинку</span>
+          <input id="reg-password-confirm" class="input" type="password" placeholder="Понови лозинку" minlength="6" maxlength="128" autocomplete="new-password" required>
+        </label>
+        <p id="reg-account-error" class="form-error" role="alert" hidden></p>
+        <div class="ob-actions">
+          <button id="btn-ob-back-code" class="btn btn-outline" type="button">
+            <i data-lucide="arrow-left"></i><span>Назад</span>
+          </button>
+          <button id="reg-account-next" class="btn btn-primary" type="submit">
+            <span>Даље</span><i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </form>
+
+      <!-- Корак 2/2: Профилна слика, позадина и опис -->
+      <form id="reg-profile-form" class="ob-step" autocomplete="off" novalidate hidden>
+        <div class="login-copy">
+          <h1>Уреди свој налог</h1>
+          <p class="muted">Додај профилну слику и позадину налога. Све можеш изменити и касније.</p>
+        </div>
+
+        <div class="prof-preview ob-prof-preview">
+          <div class="prof-preview-banner" id="reg-preview-banner"></div>
+          <div class="ob-preview-row">
+            <div class="prof-preview-avatar" id="reg-preview-avatar">
+              <i data-lucide="user"></i>
+            </div>
+            <div class="ob-preview-names">
+              <div class="ob-preview-name" id="reg-preview-name">Нови корисник</div>
+              <div class="ob-preview-handle" id="reg-preview-handle">@korisnik</div>
+            </div>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="label">Профилна слика <span class="muted">(линк)</span></span>
+          <input id="reg-avatar" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="label">Позадина налога <span class="muted">(линк)</span></span>
+          <input id="reg-banner" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="label">Кратак опис <span class="muted">(опционо)</span></span>
+          <textarea id="reg-bio" class="input textarea" rows="2" maxlength="240" placeholder="Нешто кратко о теби…"></textarea>
+        </label>
+        <p id="reg-profile-error" class="form-error" role="alert" hidden></p>
+        <div class="ob-actions">
+          <button id="btn-ob-back-account" class="btn btn-outline" type="button">
+            <i data-lucide="arrow-left"></i><span>Назад</span>
+          </button>
+          <button id="reg-finish-submit" class="btn btn-primary" type="submit">
+            <i data-lucide="check"></i><span>Заврши регистрацију</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
     <footer class="site-footer">
       <a href="https://git.crnbg.org/vltc/keshk" target="_blank" rel="noopener noreferrer"><i data-lucide="git-branch"></i><span>Made by vltc</span></a>
     </footer>
@@ -93,7 +216,13 @@
               </button>
               <div class="dropdown-sep"></div>
               <button class="dropdown-item" type="button" id="menu-account">
-                <i data-lucide="user"></i><span>Профил</span>
+                <i data-lucide="user"></i><span>Налог</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-settings">
+                <i data-lucide="settings"></i><span>Подешавања</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-admin" hidden>
+                <i data-lucide="shield"></i><span>Админ</span>
               </button>
               <button class="dropdown-item" type="button" id="menu-export">
                 <i data-lucide="download"></i><span>Извези податке</span>
@@ -243,10 +372,227 @@
       </div>
     </main>
 
-    <!-- ============ Страница: Профил корисника (/u/@korisnik) ============ -->
+    <!-- ============ Страница: Налог корисника (/u/@korisnik) ============ -->
     <main id="view-profile" class="container main profile-page" hidden>
       <button class="link-back" id="back-from-profile" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
       <div id="profile-container"></div>
+    </main>
+
+    <!-- ============ Страница: Подешавања (/podesavanja) ============ -->
+    <main id="view-settings" class="container main settings-page" hidden>
+      <div class="page-head">
+        <div>
+          <button class="link-back" id="back-from-settings" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+          <h1 class="page-title"><i data-lucide="settings"></i><span>Подешавања</span></h1>
+          <p class="muted small">Управљање налогом, лозинком, подацима и захтевом за брисање налога.</p>
+        </div>
+      </div>
+
+      <section class="card" aria-labelledby="settings-account-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="settings-account-heading">Налог и безбедност</h2>
+            <p class="muted small">Измени податке налога, промени лозинку или сачувај резервну копију.</p>
+          </div>
+        </div>
+        <div class="settings-list">
+          <div class="settings-item">
+            <div class="settings-item-icon"><i data-lucide="pencil"></i></div>
+            <div class="settings-item-main">
+              <div class="settings-item-title">Уреди налог</div>
+              <div class="settings-item-desc">Име за приказ, кратак опис, профилна слика и позадина налога.</div>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settings-edit-account" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="pencil"></i><span>Уреди налог</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-icon"><i data-lucide="key-round"></i></div>
+            <div class="settings-item-main">
+              <div class="settings-item-title">Лозинка</div>
+              <div class="settings-item-desc">Промени лозинку за пријаву на налог (аутоматски одјављује све остале уређаје).</div>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settings-change-pw" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="key"></i><span>Лозинка</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-icon"><i data-lucide="database"></i></div>
+            <div class="settings-item-main">
+              <div class="settings-item-title">Резервна копија података</div>
+              <div class="settings-item-desc">Извези своје Кешкиће, трошкове и листе у JSON датотеку или увези постојећу копију.</div>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settings-export" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="download"></i><span>Извези</span>
+              </button>
+              <button id="settings-import" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="upload"></i><span>Увези</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="settings-clear-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="settings-clear-heading">Брисање података</h2>
+            <p class="muted small">Обриши изабране податке са свог налога. Сам налог, корисничко име и лозинка остају нетакнути.</p>
+          </div>
+        </div>
+        <div class="settings-clear-box">
+          <div class="settings-checks">
+            <label class="settings-check-card">
+              <input type="checkbox" id="clear-opt-lists" checked>
+              <div class="settings-check-copy">
+                <span class="settings-check-title">Листе за куповину</span>
+                <span class="settings-check-sub">Све листе за куповину и производи у њима.</span>
+              </div>
+            </label>
+            <label class="settings-check-card" id="clear-opt-txs-card">
+              <input type="checkbox" id="clear-opt-txs">
+              <div class="settings-check-copy">
+                <span class="settings-check-title">Трошкови</span>
+                <span class="settings-check-sub">Све забележене трансакције кроз све месеце.</span>
+              </div>
+            </label>
+            <label class="settings-check-card">
+              <input type="checkbox" id="clear-opt-keshkici">
+              <div class="settings-check-copy">
+                <span class="settings-check-title">Кешкићи</span>
+                <span class="settings-check-sub">Сви месечни Кешкићи — аутоматски укључује и све трошкове.</span>
+              </div>
+            </label>
+          </div>
+          <p id="clear-data-error" class="form-error" role="alert" hidden></p>
+          <div class="settings-clear-foot">
+            <span class="muted small">Ова радња се не може поништити. Саветујемо да претходно извезеш податке.</span>
+            <button id="btn-clear-data" class="btn btn-outline btn-sm is-danger-btn" type="button">
+              <i data-lucide="trash-2"></i><span>Обриши податке</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card settings-danger-card" aria-labelledby="settings-delete-acc-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="settings-delete-acc-heading">Брисање налога</h2>
+            <p class="muted small">За трајно брисање налога обрати се на <a class="inline-mail-link" href="mailto:admin@crnbg.org">admin@crnbg.org</a> уз једнократни потврдни код.</p>
+          </div>
+        </div>
+        <div id="settings-deletion-body" class="settings-deletion-body"></div>
+      </section>
+    </main>
+
+    <!-- ============ Страница: Админ панел (/admin) ============ -->
+    <main id="view-admin" class="container main admin-page" hidden>
+      <div class="page-head">
+        <div>
+          <button class="link-back" id="back-from-admin" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+          <h1 class="page-title"><i data-lucide="shield"></i><span>Админ панел</span></h1>
+          <p class="muted small">Управљање корисничким налозима и једнократним кодовима за регистрацију.</p>
+        </div>
+        <button id="btn-generate-invite" class="btn btn-primary btn-sm" type="button">
+          <i data-lucide="plus"></i><span>Генериши код</span>
+        </button>
+      </div>
+
+      <section class="stats" aria-label="Статистика налога">
+        <div class="card stat">
+          <div class="stat-head">
+            <span class="stat-icon"><i data-lucide="users"></i></span>
+            <span class="stat-label">Регистровани налози</span>
+          </div>
+          <div class="stat-value" id="admin-stat-users">1</div>
+          <div class="stat-sub" id="admin-stat-users-sub">1 администратор</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-head">
+            <span class="stat-icon is-income"><i data-lucide="key-round"></i></span>
+            <span class="stat-label">Активни кодови</span>
+          </div>
+          <div class="stat-value" id="admin-stat-active-codes">0</div>
+          <div class="stat-sub" id="admin-stat-active-sub">спремни за регистрацију</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-head">
+            <span class="stat-icon"><i data-lucide="user-check"></i></span>
+            <span class="stat-label">Искоришћени кодови</span>
+          </div>
+          <div class="stat-value" id="admin-stat-used-codes">0</div>
+          <div class="stat-sub" id="admin-stat-used-sub">завршене регистрације</div>
+        </div>
+      </section>
+
+      <section id="admin-deletions-card" class="card settings-danger-card" aria-labelledby="admin-deletions-heading" hidden>
+        <div class="card-head">
+          <div>
+            <h2 id="admin-deletions-heading">Захтеви за брисање налога</h2>
+            <p class="muted small">Корисници који су генерисали потврдни код за брисање налога. Упореди ID, корисничко име и КОД из примљене поруке пре брисања.</p>
+          </div>
+        </div>
+        <div id="admin-deletions-list" class="admin-list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="admin-invites-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="admin-invites-heading">Кодови за регистрацију</h2>
+            <p class="muted small">Пошаљи код позваном кориснику. Сваки код важи за једну регистрацију.</p>
+          </div>
+          <button id="btn-generate-invite-card" class="btn btn-outline btn-sm" type="button">
+            <i data-lucide="key-round"></i><span>Нови код</span>
+          </button>
+        </div>
+        <div id="admin-invites-list" class="admin-list"></div>
+        <div id="admin-invites-pager" class="admin-pager" hidden>
+          <span id="admin-invites-pager-info" class="muted small">Страна 1 од 1</span>
+          <div class="admin-pager-btns">
+            <button id="admin-invites-prev" class="btn btn-outline btn-sm" type="button">
+              <i data-lucide="chevron-left"></i><span>Претходна</span>
+            </button>
+            <button id="admin-invites-next" class="btn btn-outline btn-sm" type="button">
+              <span>Следећа</span><i data-lucide="chevron-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="admin-users-heading">
+        <div class="card-head admin-users-head">
+          <div>
+            <h2 id="admin-users-heading">Регистровани налози</h2>
+            <p id="admin-users-sub" class="muted small">Само први налог има администраторска права.</p>
+          </div>
+          <div class="admin-search-wrap">
+            <span class="admin-search-icon" aria-hidden="true"><i data-lucide="search"></i></span>
+            <input id="admin-user-search" class="input input-sm admin-search-input" type="search" placeholder="Претражи (@име, назив, #ID)…" maxlength="60" autocomplete="off" spellcheck="false" aria-label="Претрага налога">
+            <button id="admin-user-search-clear" class="admin-search-clear" type="button" aria-label="Поништи претрагу" title="Поништи претрагу" hidden>
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </div>
+        <div id="admin-users-list" class="admin-list"></div>
+        <div id="admin-users-pager" class="admin-pager" hidden>
+          <span id="admin-users-pager-info" class="muted small">Страна 1 од 1</span>
+          <div class="admin-pager-btns">
+            <button id="admin-users-prev" class="btn btn-outline btn-sm" type="button">
+              <i data-lucide="chevron-left"></i><span>Претходна</span>
+            </button>
+            <button id="admin-users-next" class="btn btn-outline btn-sm" type="button">
+              <span>Следећа</span><i data-lucide="chevron-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
     </main>
 
     <footer class="site-footer">
@@ -340,11 +686,11 @@
     </form>
   </dialog>
 
-  <!-- ============ Дијалог: Уреди профил ============ -->
+  <!-- ============ Дијалог: Уреди налог ============ -->
   <dialog id="profile-dialog" class="dialog" aria-labelledby="profile-dialog-title">
     <form id="profile-form" class="dialog-body" novalidate>
       <div class="dialog-head">
-        <h3 id="profile-dialog-title">Уреди профил</h3>
+        <h3 id="profile-dialog-title">Уреди налог</h3>
         <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
       </div>
 
@@ -357,7 +703,7 @@
 
       <label class="field">
         <span class="label">Име за приказ</span>
-        <input id="prof-display-name" class="input" placeholder="нпр. Милош" maxlength="40" autocomplete="off">
+        <input id="prof-display-name" class="input" placeholder="нпр. Мартин" maxlength="40" autocomplete="off">
       </label>
 
       <label class="field">
@@ -371,7 +717,7 @@
       </label>
 
       <label class="field">
-        <span class="label">Позадина профила (линк)</span>
+        <span class="label">Позадина налога (линк)</span>
         <input id="prof-banner" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
         <span class="field-hint"><i data-lucide="link"></i>Директан линк до слике са интернета. Остави празно за уклањање.</span>
       </label>
@@ -380,7 +726,7 @@
 
       <div class="dialog-foot">
         <button class="btn btn-outline" type="button" data-close>Откажи</button>
-        <button id="prof-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span>Сачувај профил</span></button>
+        <button id="prof-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span>Сачувај налог</span></button>
       </div>
     </form>
   </dialog>
@@ -433,6 +779,34 @@
         <button id="list-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span id="list-save-label">Сачувај</span></button>
       </div>
     </form>
+  </dialog>
+
+  <!-- ============ Дијалог: QR код налога ============ -->
+  <dialog id="qr-dialog" class="dialog dialog-sm" aria-labelledby="qr-dialog-title">
+    <div class="dialog-body qr-dialog-body">
+      <div class="dialog-head">
+        <div>
+          <h3 id="qr-dialog-title">QR код налога</h3>
+          <p id="qr-user-label" class="muted small">@korisnik</p>
+        </div>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="qr-box">
+        <img id="qr-image" alt="QR код налога" draggable="false">
+      </div>
+
+      <div class="qr-url-pill" id="qr-user-url">—</div>
+
+      <div class="dialog-foot">
+        <button id="qr-copy-link" class="btn btn-outline" type="button">
+          <i data-lucide="link-2"></i><span>Копирај линк</span>
+        </button>
+        <a id="qr-download-png" class="btn btn-primary" href="#" download>
+          <i data-lucide="download"></i><span>Преузми PNG</span>
+        </a>
+      </div>
+    </div>
   </dialog>
 
   <div id="toaster" class="toaster" aria-live="polite"></div>

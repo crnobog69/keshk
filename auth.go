@@ -3,93 +3,75 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
 
 const (
-	cookieName  = "keshk_session"
-	sessionTTL  = 30 * 24 * time.Hour
-	loginPath   = "/api/login"
-	logoutPath  = "/api/logout"
+	cookieName          = "keshk_session"
+	sessionTTL          = 30 * 24 * time.Hour
+	userContextKey      = "keshk_user"
+	loginPath           = "/api/login"
+	logoutPath          = "/api/logout"
+	verifyCodePath      = "/api/register/verify-code"
+	checkUsernamePath   = "/api/register/check-username"
+	registerPath        = "/api/register"
 )
 
-// Auth implements a tiny stateless session: cookie = "<expiry>.<hmac>".
-// If a password hash is stored in the DB (changed via Налог), it overrides .env.
+// Auth издаје и проверава потписане сесионе колачиће за више корисника:
+// cookie = "<userID>.<expiry>.<hmac(userID|expiry|passwordHash)>".
+// Промена лозинке или брисање корисника аутоматски поништава старе сесије.
 type Auth struct {
-	user   string
-	pass   string
+	store  *Store
 	secret []byte
 	secure bool
-
-	mu       sync.RWMutex
-	passHash string
 }
 
-func newAuth(cfg Config, passHash string) *Auth {
-	return &Auth{user: cfg.Username, pass: cfg.Password, secret: cfg.Secret, secure: cfg.CookieSecure, passHash: passHash}
+func newAuth(cfg Config, store *Store) *Auth {
+	return &Auth{store: store, secret: cfg.Secret, secure: cfg.CookieSecure}
 }
 
-func (a *Auth) setPasswordHash(h string) {
-	a.mu.Lock()
-	a.passHash = h
-	a.mu.Unlock()
-}
-
-func (a *Auth) currentHash() string {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.passHash
-}
-
-func (a *Auth) sign(exp int64) string {
+func (a *Auth) sign(userID, exp int64, passHash string) string {
 	mac := hmac.New(sha256.New, a.secret)
-	msg := strconv.FormatInt(exp, 10) + "|" + a.user
-	if ph := a.currentHash(); ph != "" {
-		msg += "|" + ph // промена лозинке поништава старе сесије
-	}
+	msg := strconv.FormatInt(userID, 10) + "|" + strconv.FormatInt(exp, 10) + "|" + passHash
 	mac.Write([]byte(msg))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func (a *Auth) issue() (string, time.Time) {
+func (a *Auth) issue(u User) (string, time.Time) {
 	expires := time.Now().Add(sessionTTL)
 	exp := expires.Unix()
-	return strconv.FormatInt(exp, 10) + "." + a.sign(exp), expires
+	uid := strconv.FormatInt(u.ID, 10)
+	return uid + "." + strconv.FormatInt(exp, 10) + "." + a.sign(u.ID, exp, u.PasswordHash), expires
 }
 
-func (a *Auth) verify(token string) bool {
-	expStr, sig, ok := strings.Cut(token, ".")
-	if !ok {
-		return false
+func (a *Auth) verify(token string) (User, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return User{}, false
 	}
-	exp, err := strconv.ParseInt(expStr, 10, 64)
-	if err != nil || time.Now().Unix() > exp {
-		return false
+	uid, err1 := strconv.ParseInt(parts[0], 10, 64)
+	exp, err2 := strconv.ParseInt(parts[1], 10, 64)
+	if err1 != nil || err2 != nil || uid <= 0 || time.Now().Unix() > exp {
+		return User{}, false
 	}
-	return hmac.Equal([]byte(sig), []byte(a.sign(exp)))
+	u, err := a.store.GetUserByID(uid)
+	if err != nil {
+		return User{}, false
+	}
+	expected := a.sign(u.ID, exp, u.PasswordHash)
+	if !hmac.Equal([]byte(parts[2]), []byte(expected)) {
+		return User{}, false
+	}
+	return u, true
 }
 
-func (a *Auth) checkCredentials(user, pass string) bool {
-	hash := func(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
-	userOK := subtle.ConstantTimeCompare(hash(user), hash(a.user)) == 1
-	var passOK bool
-	if ph := a.currentHash(); ph != "" {
-		passOK = verifyPassword(ph, pass)
-	} else {
-		passOK = subtle.ConstantTimeCompare(hash(pass), hash(a.pass)) == 1
-	}
-	return userOK && passOK
-}
-
-func (a *Auth) setSession(c fiber.Ctx) {
-	token, expires := a.issue()
+func (a *Auth) setSession(c fiber.Ctx, u User) {
+	token, expires := a.issue(u)
 	c.Cookie(&fiber.Cookie{
 		Name:     cookieName,
 		Value:    token,
@@ -114,14 +96,39 @@ func (a *Auth) clearSession(c fiber.Ctx) {
 	})
 }
 
-// Middleware protects every /api route except login/logout.
+func isPublicAPIPath(p string) bool {
+	return p == loginPath ||
+		p == logoutPath ||
+		p == verifyCodePath ||
+		p == checkUsernamePath ||
+		p == registerPath
+}
+
+// Middleware protects every /api route except login, logout and invite registration.
 func (a *Auth) Middleware(c fiber.Ctx) error {
-	p := c.Path()
-	if p == loginPath || p == logoutPath {
+	if isPublicAPIPath(c.Path()) {
 		return c.Next()
 	}
-	if !a.verify(c.Cookies(cookieName)) {
+	u, ok := a.verify(c.Cookies(cookieName))
+	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Нисте пријављени"})
 	}
+	c.Locals(userContextKey, u)
 	return c.Next()
+}
+
+// AdminMiddleware дозвољава приступ само првом (админ) налогу.
+func (a *Auth) AdminMiddleware(c fiber.Ctx) error {
+	u := currentUser(c)
+	if !u.IsAdmin {
+		return fail(c, fiber.StatusForbidden, "Приступ је дозвољен само администратору")
+	}
+	return c.Next()
+}
+
+func currentUser(c fiber.Ctx) User {
+	if u, ok := c.Locals(userContextKey).(User); ok {
+		return u
+	}
+	return User{}
 }

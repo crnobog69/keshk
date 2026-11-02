@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,8 +15,8 @@ import (
 // ---------------------------------------------------------------------
 // Извоз / увоз података (резервна копија у JSON формату)
 //
-// Извозе се Кешкићи, трошкови и листе за куповину. Подешавања налога
-// (лозинка, аватар, име за приказ) се НЕ извозе.
+// Извозе се Кешкићи, трошкови и листе за куповину тренутно пријављеног корисника.
+// Подешавања налога (лозинка, аватар, име за приказ) и подаци других налога се НЕ дирају.
 // ---------------------------------------------------------------------
 
 const (
@@ -75,8 +76,8 @@ type Backup struct {
 	Lists        []backupList    `json:"lists"`
 }
 
-// ExportBackup чита све корисничке податке из базе.
-func (s *Store) ExportBackup() (Backup, error) {
+// ExportBackup чита све податке датог корисника из базе.
+func (s *Store) ExportBackup(userID int64) (Backup, error) {
 	b := Backup{
 		App:          backupApp,
 		Version:      backupVersion,
@@ -88,7 +89,7 @@ func (s *Store) ExportBackup() (Backup, error) {
 
 	rows, err := s.db.Query(`
 		SELECT id, month, dropped_month, title, amount, currency, rate, is_default, created_at
-		FROM keshkici ORDER BY id`)
+		FROM keshkici WHERE user_id = $1 ORDER BY id`, userID)
 	if err != nil {
 		return b, err
 	}
@@ -110,7 +111,7 @@ func (s *Store) ExportBackup() (Backup, error) {
 
 	rows, err = s.db.Query(`
 		SELECT id, keshkic_id, date, title, amount, currency, rate, created_at
-		FROM transactions ORDER BY id`)
+		FROM transactions WHERE user_id = $1 ORDER BY id`, userID)
 	if err != nil {
 		return b, err
 	}
@@ -130,7 +131,7 @@ func (s *Store) ExportBackup() (Backup, error) {
 
 	rows, err = s.db.Query(`
 		SELECT id, title, COALESCE(keshkic_id, 0), currency, due_date, COALESCE(tx_id, 0), created_at
-		FROM shopping_lists ORDER BY id`)
+		FROM shopping_lists WHERE user_id = $1 ORDER BY id`, userID)
 	if err != nil {
 		return b, err
 	}
@@ -160,8 +161,12 @@ func (s *Store) ExportBackup() (Backup, error) {
 			})
 		}
 	}
-	// created_at ставки није део модела ShoppingItem — допуни директно.
-	rows, err = s.db.Query(`SELECT id, list_id, created_at FROM shopping_items`)
+	// created_at ставки није део модела ShoppingItem — допуни директно за листе овог корисника.
+	rows, err = s.db.Query(`
+		SELECT si.id, si.list_id, si.created_at
+		FROM shopping_items si
+		JOIN shopping_lists sl ON sl.id = si.list_id
+		WHERE sl.user_id = $1`, userID)
 	if err != nil {
 		return b, err
 	}
@@ -337,9 +342,56 @@ func (b *Backup) normalize() error {
 	return nil
 }
 
-// ImportBackup у једној трансакцији ЗАМЕЊУЈЕ све Кешкиће, трошкове и листе садржајем копије.
-// Ако нешто пође по злу, база остаје нетакнута.
-func (s *Store) ImportBackup(b Backup) error {
+func rowIDTaken(tx *sql.Tx, table string, id int64) (bool, error) {
+	var one int
+	err := tx.QueryRow(`SELECT 1 FROM `+table+` WHERE id = $1`, id).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func syncIdentitySequences(tx *sql.Tx) error {
+	for _, tbl := range []string{"keshkici", "transactions", "shopping_lists", "shopping_items"} {
+		q := fmt.Sprintf(
+			`SELECT setval(pg_get_serial_sequence('%s', 'id'), COALESCE((SELECT MAX(id) FROM %s), 1), EXISTS (SELECT 1 FROM %s))`,
+			tbl, tbl, tbl,
+		)
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func backupHasIDCollision(tx *sql.Tx, b Backup) (bool, error) {
+	for _, k := range b.Keshkici {
+		if taken, err := rowIDTaken(tx, "keshkici", k.ID); err != nil || taken {
+			return taken, err
+		}
+	}
+	for _, t := range b.Transactions {
+		if taken, err := rowIDTaken(tx, "transactions", t.ID); err != nil || taken {
+			return taken, err
+		}
+	}
+	for _, l := range b.Lists {
+		if taken, err := rowIDTaken(tx, "shopping_lists", l.ID); err != nil || taken {
+			return taken, err
+		}
+		for _, it := range l.Items {
+			if taken, err := rowIDTaken(tx, "shopping_items", it.ID); err != nil || taken {
+				return taken, err
+			}
+		}
+	}
+	return false, nil
+}
+
+// ImportBackup у једној трансакцији ЗАМЕЊУЈЕ све Кешкиће, трошкове и листе само за датог корисника.
+// Очувава ИД-јеве из резервне копије када су сви слободни, а аутоматски генерише нове и премапира везе
+// ако неки ИД већ припада другом налогу (без обзира на редослед записа у JSON датотеци).
+func (s *Store) ImportBackup(userID int64, b Backup) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -347,14 +399,23 @@ func (s *Store) ImportBackup(b Backup) error {
 	defer tx.Rollback()
 
 	for _, q := range []string{
-		`DELETE FROM shopping_items`,
-		`DELETE FROM shopping_lists`,
-		`DELETE FROM transactions`,
-		`DELETE FROM keshkici`,
+		`DELETE FROM shopping_items WHERE list_id IN (SELECT id FROM shopping_lists WHERE user_id = $1)`,
+		`DELETE FROM shopping_lists WHERE user_id = $1`,
+		`DELETE FROM transactions WHERE user_id = $1`,
+		`DELETE FROM keshkici WHERE user_id = $1`,
 	} {
-		if _, err := tx.Exec(q); err != nil {
+		if _, err := tx.Exec(q, userID); err != nil {
 			return err
 		}
+	}
+
+	if err := syncIdentitySequences(tx); err != nil {
+		return err
+	}
+
+	remap, err := backupHasIDCollision(tx, b)
+	if err != nil {
+		return err
 	}
 
 	orNow := func(v string) any {
@@ -364,45 +425,102 @@ func (s *Store) ImportBackup(b Backup) error {
 		return v
 	}
 
+	kMap := make(map[int64]int64, len(b.Keshkici))
 	for _, k := range b.Keshkici {
 		def := 0
 		if k.IsDefault {
 			def = 1
 		}
-		if _, err := tx.Exec(`
-			INSERT INTO keshkici (id, month, dropped_month, title, amount, currency, rate, amount_rsd, is_default, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			k.ID, k.Month, k.DroppedMonth, k.Title, round2(k.Amount), k.Currency, k.Rate, round2(k.Amount*k.Rate), def, orNow(k.CreatedAt)); err != nil {
-			return err
+		if !remap {
+			if _, err := tx.Exec(`
+				INSERT INTO keshkici (id, user_id, month, dropped_month, title, amount, currency, rate, amount_rsd, is_default, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+				k.ID, userID, k.Month, k.DroppedMonth, k.Title, round2(k.Amount), k.Currency, k.Rate, round2(k.Amount*k.Rate), def, orNow(k.CreatedAt)); err != nil {
+				return err
+			}
+			kMap[k.ID] = k.ID
+		} else {
+			var newID int64
+			if err := tx.QueryRow(`
+				INSERT INTO keshkici (user_id, month, dropped_month, title, amount, currency, rate, amount_rsd, is_default, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				RETURNING id`,
+				userID, k.Month, k.DroppedMonth, k.Title, round2(k.Amount), k.Currency, k.Rate, round2(k.Amount*k.Rate), def, orNow(k.CreatedAt)).Scan(&newID); err != nil {
+				return err
+			}
+			kMap[k.ID] = newID
 		}
 	}
+
+	txMap := make(map[int64]int64, len(b.Transactions))
 	for _, t := range b.Transactions {
-		if _, err := tx.Exec(`
-			INSERT INTO transactions (id, keshkic_id, month, date, title, amount, currency, rate, amount_rsd, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.ID, t.KeshkicID, t.Date[:7], t.Date, t.Title, round2(t.Amount), t.Currency, t.Rate, round2(t.Amount*t.Rate), orNow(t.CreatedAt)); err != nil {
-			return err
+		mappedKID := kMap[t.KeshkicID]
+		if !remap {
+			if _, err := tx.Exec(`
+				INSERT INTO transactions (id, user_id, keshkic_id, month, date, title, amount, currency, rate, amount_rsd, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+				t.ID, userID, mappedKID, t.Date[:7], t.Date, t.Title, round2(t.Amount), t.Currency, t.Rate, round2(t.Amount*t.Rate), orNow(t.CreatedAt)); err != nil {
+				return err
+			}
+			txMap[t.ID] = t.ID
+		} else {
+			var newID int64
+			if err := tx.QueryRow(`
+				INSERT INTO transactions (user_id, keshkic_id, month, date, title, amount, currency, rate, amount_rsd, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				RETURNING id`,
+				userID, mappedKID, t.Date[:7], t.Date, t.Title, round2(t.Amount), t.Currency, t.Rate, round2(t.Amount*t.Rate), orNow(t.CreatedAt)).Scan(&newID); err != nil {
+				return err
+			}
+			txMap[t.ID] = newID
 		}
 	}
+
 	for _, l := range b.Lists {
-		if _, err := tx.Exec(`
-			INSERT INTO shopping_lists (id, title, keshkic_id, currency, due_date, tx_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			l.ID, l.Title, nullID(l.KeshkicID), l.Currency, l.DueDate, nullID(l.TxID), orNow(l.CreatedAt)); err != nil {
-			return err
+		mappedKID := kMap[l.KeshkicID]
+		mappedTxID := txMap[l.TxID]
+		actualListID := l.ID
+		if !remap {
+			if _, err := tx.Exec(`
+				INSERT INTO shopping_lists (id, user_id, title, keshkic_id, currency, due_date, tx_id, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+				l.ID, userID, l.Title, nullID(mappedKID), l.Currency, l.DueDate, nullID(mappedTxID), orNow(l.CreatedAt)); err != nil {
+				return err
+			}
+		} else {
+			if err := tx.QueryRow(`
+				INSERT INTO shopping_lists (user_id, title, keshkic_id, currency, due_date, tx_id, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+				RETURNING id`,
+				userID, l.Title, nullID(mappedKID), l.Currency, l.DueDate, nullID(mappedTxID), orNow(l.CreatedAt)).Scan(&actualListID); err != nil {
+				return err
+			}
 		}
 		for _, it := range l.Items {
 			checked := 0
 			if it.Checked {
 				checked = 1
 			}
-			if _, err := tx.Exec(`
-				INSERT INTO shopping_items (id, list_id, name, price, checked, position, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				it.ID, l.ID, it.Name, nullPrice(it.Price), checked, it.Position, orNow(it.CreatedAt)); err != nil {
-				return err
+			if !remap {
+				if _, err := tx.Exec(`
+					INSERT INTO shopping_items (id, list_id, name, price, checked, position, created_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+					it.ID, actualListID, it.Name, nullPrice(it.Price), checked, it.Position, orNow(it.CreatedAt)); err != nil {
+					return err
+				}
+			} else {
+				if _, err := tx.Exec(`
+					INSERT INTO shopping_items (list_id, name, price, checked, position, created_at)
+					VALUES ($1, $2, $3, $4, $5, $6)`,
+					actualListID, it.Name, nullPrice(it.Price), checked, it.Position, orNow(it.CreatedAt)); err != nil {
+					return err
+				}
 			}
 		}
+	}
+
+	if err := syncIdentitySequences(tx); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -413,7 +531,8 @@ func (s *Store) ImportBackup(b Backup) error {
 
 // ExportData: GET /api/export — преузимање резервне копије као JSON датотеке.
 func (h *Handlers) ExportData(c fiber.Ctx) error {
-	b, err := h.store.ExportBackup()
+	u := currentUser(c)
+	b, err := h.store.ExportBackup(u.ID)
 	if err != nil {
 		return internal(c, err)
 	}
@@ -422,11 +541,11 @@ func (h *Handlers) ExportData(c fiber.Ctx) error {
 		return internal(c, err)
 	}
 	c.Set("Content-Type", "application/json; charset=utf-8")
-	c.Set("Content-Disposition", `attachment; filename="keshk-backup-`+time.Now().Format("2006-01-02")+`.json"`)
+	c.Set("Content-Disposition", `attachment; filename="keshk-`+u.Username+`-`+time.Now().Format("2006-01-02")+`.json"`)
 	return c.Send(out)
 }
 
-// ImportData: POST /api/import — замењује све податке садржајем резервне копије.
+// ImportData: POST /api/import — замењује све податке тренутног корисника садржајем резервне копије.
 func (h *Handlers) ImportData(c fiber.Ctx) error {
 	var b Backup
 	if err := json.Unmarshal(c.Body(), &b); err != nil {
@@ -435,7 +554,7 @@ func (h *Handlers) ImportData(c fiber.Ctx) error {
 	if err := b.normalize(); err != nil {
 		return fail(c, fiber.StatusBadRequest, err.Error())
 	}
-	if err := h.store.ImportBackup(b); err != nil {
+	if err := h.store.ImportBackup(currentUser(c).ID, b); err != nil {
 		return internal(c, err)
 	}
 	items := 0

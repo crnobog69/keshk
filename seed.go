@@ -8,16 +8,16 @@ import (
 // ---------------------------------------------------------------------
 // Пробни (demo) подаци — KESHK_SEED=true
 //
-// Попуњава празну базу са неколико Кешкића, трошковима у три месеца и
+// Попуњава празан налог са неколико Кешкића, трошковима у три месеца и
 // листама за куповину, да се изглед апликације може погледати одмах.
-// Датуми се рачунају у односу на данашњи дан. Ако база већ има Кешкиће
+// Датуми се рачунају у односу на данашњи дан. Ако корисник већ има Кешкиће
 // или листе, ништа се не мења.
 // ---------------------------------------------------------------------
 
-func (s *Store) isEmpty() bool {
+func (s *Store) isEmpty(userID int64) bool {
 	var k, l int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM keshkici`).Scan(&k)
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM shopping_lists`).Scan(&l)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM keshkici WHERE user_id = $1`, userID).Scan(&k)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM shopping_lists WHERE user_id = $1`, userID).Scan(&l)
 	return k == 0 && l == 0
 }
 
@@ -27,9 +27,9 @@ type demoItem struct {
 	checked bool
 }
 
-func seedDemo(s *Store, now time.Time) error {
-	if !s.isEmpty() {
-		log.Println("[INFO] KESHK_SEED: база већ има податке — пробни подаци нису додати (користи празну базу, нпр. DB_PATH=data/demo.db)")
+func seedDemo(s *Store, userID int64, now time.Time) error {
+	if !s.isEmpty(userID) {
+		log.Println("[INFO] KESHK_SEED: база већ има податке — пробни подаци нису додати (користи празну базу или посебну Neon грану)")
 		return nil
 	}
 
@@ -50,7 +50,7 @@ func seedDemo(s *Store, now time.Time) error {
 	}
 
 	newK := func(delta int, title string, amount float64, cur string, rate float64, def bool) (Keshkic, error) {
-		return s.CreateKeshkic(Keshkic{
+		return s.CreateKeshkic(userID, Keshkic{
 			Month: month(delta), Title: title, Amount: amount, Currency: cur, Rate: rate,
 			AmountRSD: round2(amount * rate), IsDefault: def,
 		})
@@ -72,7 +72,7 @@ func seedDemo(s *Store, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if err := s.DropKeshkic(trip.ID, month(-1)); err != nil {
+	if err := s.DropKeshkic(userID, trip.ID, month(-1)); err != nil {
 		return err
 	}
 
@@ -108,7 +108,7 @@ func seedDemo(s *Store, now time.Time) error {
 		{trip, -1, 4, "Хостел", 5400, "RSD", 1},
 	}
 	for _, t := range txs {
-		if _, err := s.CreateTx(Tx{
+		if _, err := s.CreateTx(userID, Tx{
 			KeshkicID: t.k.ID, Date: date(t.delta, t.day), Title: t.title,
 			Amount: t.amount, Currency: t.cur, Rate: t.rate, AmountRSD: round2(t.amount * t.rate),
 		}); err != nil {
@@ -117,7 +117,7 @@ func seedDemo(s *Store, now time.Time) error {
 	}
 
 	newList := func(title string, keshkicID int64, due string, items []demoItem) (ShoppingList, error) {
-		l, err := s.CreateShoppingList(ShoppingList{Title: title, KeshkicID: keshkicID, Currency: "RSD", DueDate: due})
+		l, err := s.CreateShoppingList(userID, ShoppingList{Title: title, KeshkicID: keshkicID, Currency: "RSD", DueDate: due})
 		if err != nil {
 			return l, err
 		}
@@ -127,11 +127,11 @@ func seedDemo(s *Store, now time.Time) error {
 				v := it.price
 				p = &v
 			}
-			if err := s.AddShoppingItem(l.ID, it.name, p); err != nil {
+			if err := s.AddShoppingItem(userID, l.ID, it.name, p); err != nil {
 				return l, err
 			}
 		}
-		full, err := s.GetShoppingList(l.ID)
+		full, err := s.GetShoppingList(userID, l.ID)
 		if err != nil {
 			return l, err
 		}
@@ -141,11 +141,11 @@ func seedDemo(s *Store, now time.Time) error {
 			}
 			si := full.Items[i]
 			si.Checked = true
-			if err := s.UpdateShoppingItem(si); err != nil {
+			if err := s.UpdateShoppingItem(userID, si); err != nil {
 				return l, err
 			}
 		}
-		return s.GetShoppingList(l.ID)
+		return s.GetShoppingList(userID, l.ID)
 	}
 
 	// 1) Отворена листа са роком за 2 дана
@@ -170,14 +170,14 @@ func seedDemo(s *Store, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	charged, err := s.CreateTx(Tx{
+	charged, err := s.CreateTx(userID, Tx{
 		KeshkicID: mama.ID, Date: date(-1, 5), Title: l2.Title,
 		Amount: l2.Total, Currency: "RSD", Rate: 1, AmountRSD: l2.Total,
 	})
 	if err != nil {
 		return err
 	}
-	if err := s.SetListTx(l2.ID, charged.ID, mama.ID); err != nil {
+	if err := s.SetListTx(userID, l2.ID, charged.ID, mama.ID); err != nil {
 		return err
 	}
 

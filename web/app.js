@@ -71,10 +71,20 @@
     editingTx: null,
     editingKeshkic: null,
     lastCurrency: localStorage.getItem('keshk-currency') || 'RSD',
-    // Account
+    // Account & Admin
     account: null,
     currentProfile: null,
     authNoticeShown: false,
+    admin: null,
+    adminQuery: '',
+    adminUsersPage: 1,
+    adminInvitesPage: 1,
+    onboarding: {
+      code: '',
+      username: '',
+      displayName: '',
+      password: '',
+    },
     // Shopping lists
     lists: [],
     currentList: null,
@@ -82,10 +92,50 @@
     editingList: null,
   };
 
+  function resetClientState() {
+    state.month = currentMonth();
+    state.data = null;
+    state.history = [];
+    state.selectedKeshkicFilter = 0;
+    state.editingTx = null;
+    state.editingKeshkic = null;
+    state.account = null;
+    state.currentProfile = null;
+    state.admin = null;
+    state.adminQuery = '';
+    state.adminUsersPage = 1;
+    state.adminInvitesPage = 1;
+    state.lists = [];
+    state.currentList = null;
+    state.editingItemId = null;
+    state.editingList = null;
+    if ($('#keshkici-grid')) $('#keshkici-grid').innerHTML = '';
+    if ($('#tx-list')) $('#tx-list').innerHTML = '';
+    if ($('#lists-grid')) $('#lists-grid').innerHTML = '';
+    if ($('#profile-container')) $('#profile-container').innerHTML = '';
+    if ($('#settings-deletion-body')) $('#settings-deletion-body').innerHTML = '';
+    if ($('#admin-deletions-list')) $('#admin-deletions-list').innerHTML = '';
+    if ($('#admin-deletions-card')) $('#admin-deletions-card').hidden = true;
+    if ($('#admin-invites-list')) $('#admin-invites-list').innerHTML = '';
+    if ($('#admin-users-list')) $('#admin-users-list').innerHTML = '';
+    if ($('#admin-invites-pager')) $('#admin-invites-pager').hidden = true;
+    if ($('#admin-users-pager')) $('#admin-users-pager').hidden = true;
+    if ($('#admin-user-search')) $('#admin-user-search').value = '';
+    if ($('#admin-user-search-clear')) $('#admin-user-search-clear').hidden = true;
+    if ($('#clear-opt-lists')) $('#clear-opt-lists').checked = true;
+    if ($('#clear-opt-txs')) { $('#clear-opt-txs').checked = false; $('#clear-opt-txs').disabled = false; }
+    if ($('#clear-opt-keshkici')) $('#clear-opt-keshkici').checked = false;
+    $('#clear-opt-txs-card')?.classList.remove('is-locked');
+  }
+
   // ---------------------------------------------------------------
   // API
   // ---------------------------------------------------------------
   class Unauthorized extends Error {}
+
+  function isPublicEndpoint(path) {
+    return path === '/api/login' || path.startsWith('/api/register');
+  }
 
   async function api(path, { method = 'GET', body } = {}) {
     const res = await fetch(path, {
@@ -94,7 +144,7 @@
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (res.status === 401 && path !== '/api/login') { showLogin(); throw new Unauthorized(); }
+    if (res.status === 401 && !isPublicEndpoint(path)) { showLogin(); throw new Unauthorized(); }
     const data = res.status === 204 ? null : await res.json().catch(() => null);
     if (!res.ok) throw new Error((data && data.error) || `Грешка (${res.status})`);
     return data;
@@ -117,8 +167,93 @@
   }
 
   // ---------------------------------------------------------------
-  // Приказ (Views)
+  // Приказ (Views) и Регистрација / Onboarding
   // ---------------------------------------------------------------
+  function formatInviteCodeInput(raw) {
+    const clean = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+    if (clean.length > 8) return `${clean.slice(0, 4)}-${clean.slice(4, 8)}-${clean.slice(8)}`;
+    if (clean.length > 4) return `${clean.slice(0, 4)}-${clean.slice(4)}`;
+    return clean;
+  }
+
+  function resetOnboardingForms() {
+    state.onboarding = { code: '', username: '', displayName: '', password: '' };
+    if ($('#reg-code')) $('#reg-code').value = '';
+    if ($('#reg-username')) $('#reg-username').value = '';
+    if ($('#reg-display-name')) $('#reg-display-name').value = '';
+    if ($('#reg-password')) $('#reg-password').value = '';
+    if ($('#reg-password-confirm')) $('#reg-password-confirm').value = '';
+    if ($('#reg-avatar')) $('#reg-avatar').value = '';
+    if ($('#reg-banner')) $('#reg-banner').value = '';
+    if ($('#reg-bio')) $('#reg-bio').value = '';
+    if ($('#reg-code-error')) $('#reg-code-error').hidden = true;
+    if ($('#reg-account-error')) $('#reg-account-error').hidden = true;
+    if ($('#reg-profile-error')) $('#reg-profile-error').hidden = true;
+  }
+
+  function showOnboardingStep(step) {
+    const badge = $('#ob-step-badge');
+    const prog = $('#ob-progress');
+    const b1 = $('#ob-bar-1');
+    const b2 = $('#ob-bar-2');
+    const fCode = $('#reg-code-form');
+    const fAcc = $('#reg-account-form');
+    const fProf = $('#reg-profile-form');
+
+    if (fCode) fCode.hidden = step !== 'code';
+    if (fAcc) fAcc.hidden = step !== 'account';
+    if (fProf) fProf.hidden = step !== 'profile';
+
+    if (step === 'code') {
+      if (badge) badge.textContent = 'Позивница';
+      if (prog) prog.hidden = true;
+      if ($('#reg-code-error')) $('#reg-code-error').hidden = true;
+      setTimeout(() => $('#reg-code')?.focus(), 40);
+    } else if (step === 'account') {
+      if (badge) badge.textContent = 'Корак 1 од 2';
+      if (prog) prog.hidden = false;
+      b1?.classList.add('is-active');
+      b2?.classList.remove('is-active');
+      if ($('#reg-account-error')) $('#reg-account-error').hidden = true;
+      setTimeout(() => $('#reg-username')?.focus(), 40);
+    } else if (step === 'profile') {
+      if (badge) badge.textContent = 'Корак 2 од 2';
+      if (prog) prog.hidden = false;
+      b1?.classList.add('is-active');
+      b2?.classList.add('is-active');
+      if ($('#reg-profile-error')) $('#reg-profile-error').hidden = true;
+      updateOnboardingPreview();
+      setTimeout(() => $('#reg-avatar')?.focus(), 40);
+    }
+    icons();
+  }
+
+  function openRegisterCard(prefillCode = '') {
+    $('#login-form').hidden = true;
+    $('#register-card').hidden = false;
+    if (prefillCode && $('#reg-code')) {
+      $('#reg-code').value = formatInviteCodeInput(prefillCode);
+    }
+    showOnboardingStep('code');
+  }
+
+  function closeRegisterCard() {
+    $('#register-card').hidden = true;
+    $('#login-form').hidden = false;
+    if ($('#login-error')) $('#login-error').hidden = true;
+    $('#login-username')?.focus();
+    icons();
+  }
+
+  function updateOnboardingPreview() {
+    const uname = state.onboarding.username || 'korisnik';
+    const dname = state.onboarding.displayName || uname;
+    if ($('#reg-preview-name')) $('#reg-preview-name').textContent = dname;
+    if ($('#reg-preview-handle')) $('#reg-preview-handle').textContent = `@${uname}`;
+    setBannerBox($('#reg-preview-banner'), $('#reg-banner')?.value || '');
+    setAvatarBox($('#reg-preview-avatar'), $('#reg-avatar')?.value || '', dname);
+  }
+
   function showLogin({ manualLogout = false } = {}) {
     $('#splash').classList.add('is-hidden');
     $('#login-view').hidden = false;
@@ -139,7 +274,7 @@
         state.authNoticeShown = true;
         toast(msg, 'error');
       }
-    } else if (!manualLogout && (p === '/liste' || p.startsWith('/liste/'))) {
+    } else if (!manualLogout && (p === '/liste' || p.startsWith('/liste/') || p === '/podesavanja' || p.startsWith('/podesavanja/') || p === '/admin' || p.startsWith('/admin/'))) {
       if (noticeText) noticeText.textContent = 'Мораш бити пријављен да би приступио овој страници.';
       if (notice) notice.hidden = false;
     } else {
@@ -147,7 +282,14 @@
       state.authNoticeShown = false;
     }
 
-    $('#login-username').focus();
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    if (urlCode && !manualLogout) {
+      openRegisterCard(urlCode);
+    } else {
+      $('#register-card').hidden = true;
+      $('#login-form').hidden = false;
+      $('#login-username').focus();
+    }
     icons();
   }
 
@@ -328,7 +470,6 @@
               <div class="k-title-row">${badge}<div class="k-title" title="${esc(k.title)}">${esc(k.title)}</div></div>
               <div class="k-initial">${initialInfo}${sinceInfo ? ' · ' + sinceInfo : ''}</div>
             </div>
-
           </div>
 
           <div class="k-balance-row">
@@ -522,7 +663,6 @@
     const isExpense = kind === 'expense';
     const s = state.data && state.data.summary ? state.data.summary : {};
     const keshkici = (s.keshkici || []).filter((k) => !k.dropped || (editItem && editItem.keshkicId === k.id));
-
 
     $('#modal-title').textContent = editItem
       ? (isExpense ? 'Измени трошак' : 'Измени Кешкић')
@@ -722,9 +862,6 @@
   }
 
   // ---------------------------------------------------------------
-  // Тема
-  // ---------------------------------------------------------------
-  // ---------------------------------------------------------------
   // Извоз / увоз података
   // ---------------------------------------------------------------
   async function exportData() {
@@ -734,9 +871,10 @@
       if (res.status === 401) { showLogin(); return; }
       if (!res.ok) throw new Error(`Грешка (${res.status})`);
       const blob = await res.blob();
+      const uname = (state.account && state.account.username) ? state.account.username : 'backup';
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `keshk-backup-${today()}.json`;
+      a.download = `keshk-${uname}-${today()}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -749,7 +887,7 @@
 
   async function importData(file) {
     if (!file) return;
-    if (!confirm('Увоз ЗАМЕЊУЈЕ све тренутне Кешкиће, трошкове и листе подацима из датотеке.\n\nНалог (лозинка, слика) остаје исти. Наставити?')) return;
+    if (!confirm('Увоз ЗАМЕЊУЈЕ све тренутне Кешкиће, трошкове и листе на твом налогу подацима из датотеке.\n\nНалог (лозинка, слика) остаје исти. Наставити?')) return;
     try {
       const text = await file.text();
       try { JSON.parse(text); } catch { throw new Error('Датотека није исправан JSON'); }
@@ -874,6 +1012,8 @@
     if (nameEl) nameEl.textContent = a.displayName || a.username || 'admin';
     const handleEl = $('#menu-user-handle');
     if (handleEl) handleEl.textContent = '@' + (a.username || 'admin');
+    const adminItem = $('#menu-admin');
+    if (adminItem) adminItem.hidden = !a.isAdmin;
   }
 
   function openMyProfile() {
@@ -898,7 +1038,7 @@
     } catch (ex) {
       if (ex instanceof Unauthorized || (seq && seq !== routeSeq)) return;
       state.currentProfile = null;
-      document.title = 'Keshk >> Профил';
+      document.title = 'Keshk >> Налог';
       renderProfileNotFound(uname);
     }
   }
@@ -924,7 +1064,10 @@
     const title = p.displayName || p.username;
     const bioHtml = p.bio
       ? `<p class="profile-bio">${esc(p.bio)}</p>`
-      : `<p class="profile-bio is-empty">${p.isSelf ? 'Још увек ниси додао опис профила.' : 'Корисник није додао опис.'}</p>`;
+      : `<p class="profile-bio is-empty">${p.isSelf ? '' : 'Корисник није додао опис.'}</p>`;
+    const adminBadge = p.isAdmin
+      ? `<span class="badge badge-admin"><i data-lucide="shield"></i><span>Админ</span></span>`
+      : '';
 
     box.innerHTML = `
       <section class="card profile-card">
@@ -935,17 +1078,12 @@
               <i data-lucide="user"></i>
             </div>
             <div class="profile-actions">
-              <button class="btn btn-ghost btn-icon btn-sm" type="button" id="btn-copy-profile" title="Копирај линк профила" aria-label="Копирај линк профила">
+              <button class="btn btn-outline btn-icon btn-sm" type="button" id="btn-copy-profile" title="Копирај линк налога" aria-label="Копирај линк налога">
                 <i data-lucide="link-2"></i>
               </button>
-              ${p.isSelf ? `
-                <button class="btn btn-outline btn-sm" type="button" id="btn-edit-profile">
-                  <i data-lucide="pencil"></i><span>Уреди профил</span>
-                </button>
-                <button class="btn btn-outline btn-sm" type="button" id="btn-open-pw">
-                  <i data-lucide="key"></i><span>Лозинка</span>
-                </button>
-              ` : ''}
+              <button class="btn btn-outline btn-icon btn-sm" type="button" id="btn-qr-profile" title="Прикажи QR код налога" aria-label="Прикажи QR код налога">
+                <i data-lucide="qr-code"></i>
+              </button>
             </div>
           </div>
 
@@ -956,6 +1094,7 @@
             </div>
             ${bioHtml}
             <div class="profile-meta">
+              ${adminBadge}
               <span class="badge badge-outline">
                 <i data-lucide="calendar"></i>
                 <span>Члан од ${esc(formatMemberSince(p.memberSince))}</span>
@@ -967,6 +1106,36 @@
 
     setBannerBox($('#profile-banner-box'), p.banner);
     setAvatarBox($('#profile-avatar-box'), p.avatar, title);
+    icons();
+  }
+
+  function openProfileQRDialog(p) {
+    if (!p) return;
+    const origin = window.location.origin;
+    const fullUrl = `${origin}/u/@${encodeURIComponent(p.username)}`;
+    const qrSvgUrl = `/api/users/@${encodeURIComponent(p.username)}/qr?origin=${encodeURIComponent(origin)}`;
+    const qrPngUrl = `${qrSvgUrl}&format=png`;
+
+    const labelEl = $('#qr-user-label');
+    if (labelEl) {
+      labelEl.textContent = p.displayName ? `${p.displayName} · @${p.username}` : `@${p.username}`;
+    }
+    const urlEl = $('#qr-user-url');
+    if (urlEl) {
+      urlEl.textContent = fullUrl;
+      urlEl.dataset.url = fullUrl;
+    }
+    const imgEl = $('#qr-image');
+    if (imgEl) {
+      imgEl.src = qrSvgUrl;
+      imgEl.alt = `QR код за @${p.username}`;
+    }
+    const dlEl = $('#qr-download-png');
+    if (dlEl) {
+      dlEl.href = qrPngUrl;
+      dlEl.download = `keshk-@${p.username}-qr.png`;
+    }
+    $('#qr-dialog')?.showModal();
     icons();
   }
 
@@ -1011,9 +1180,12 @@
       });
       updateTopbarAvatar();
       $('#profile-dialog').close();
-      toast('Профил сачуван');
+      toast('Налог сачуван');
       if (state.currentProfile && state.currentProfile.isSelf) {
         await loadProfilePage(state.account.username);
+      }
+      if (window.location.pathname.startsWith('/podesavanja')) {
+        renderSettingsPage();
       }
     } catch (ex) {
       if (!(ex instanceof Unauthorized)) fail(ex.message);
@@ -1055,7 +1227,555 @@
   }
 
   // ---------------------------------------------------------------
-  // Навигација и рутирање (/, /liste, /liste/:id, /u/@korisnik)
+  // Подешавања (/podesavanja) — брисање података и захтев за брисање налога
+  // ---------------------------------------------------------------
+  function buildDeletionPrompt(a, placeholder = '[генериши потврдни код]') {
+    const id = a && a.id != null ? a.id : '';
+    const uname = (a && a.username) || '';
+    const code = (a && a.deletionCode) ? a.deletionCode : placeholder;
+    return `Захтевам брисање налога:\nID: ${id}\nКорисничко име: ${uname}\nКОД: ${code}`;
+  }
+
+  function syncClearCheckboxes() {
+    const kCb = $('#clear-opt-keshkici');
+    const tCb = $('#clear-opt-txs');
+    const tCard = $('#clear-opt-txs-card');
+    if (!kCb || !tCb) return;
+    if (kCb.checked) {
+      tCb.checked = true;
+      tCb.disabled = true;
+      tCard?.classList.add('is-locked');
+    } else {
+      tCb.disabled = false;
+      tCard?.classList.remove('is-locked');
+    }
+    if ($('#clear-data-error')) $('#clear-data-error').hidden = true;
+  }
+
+  async function loadSettingsPage(seq) {
+    try {
+      const me = await api('/api/me');
+      if (seq && seq !== routeSeq) return;
+      state.account = me;
+      updateTopbarAvatar();
+      renderSettingsPage();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized) && (!seq || seq === routeSeq)) {
+        toast(ex.message, 'error');
+      }
+    }
+  }
+
+  function renderSettingsPage() {
+    syncClearCheckboxes();
+    const box = $('#settings-deletion-body');
+    if (!box) return;
+    const a = state.account || {};
+
+    if (a.isAdmin) {
+      box.innerHTML = `
+        <div class="deletion-info-box">
+          <i data-lucide="shield"></i>
+          <div>
+            Ово је главни администраторски налог (<b>ID: #${esc(a.id)}</b>, <b>@${esc(a.username)}</b>) и не може се обрисати.
+            Захтеве других корисника за брисање налога можеш прегледати и обрадити у
+            <button class="admin-user-link" type="button" data-go-admin>Админ панелу</button>.
+          </div>
+        </div>`;
+      icons();
+      return;
+    }
+
+    const hasCode = Boolean(a.deletionCode);
+    const promptText = buildDeletionPrompt(a);
+    const reqDay = a.deletionRequestedAt ? a.deletionRequestedAt.split('T')[0] : '';
+
+    if (!hasCode) {
+      box.innerHTML = `
+        <div class="deletion-info-box">
+          <i data-lucide="info"></i>
+          <div>
+            Да би се потврдило да брисање заиста тражи власник налога, прво генериши потврдни код и пошаљи поруку у наставку на <b>admin@crnbg.org</b>.
+            Код можеш генерисати <b>само једном</b> док га администратор не потврди.
+          </div>
+        </div>
+
+        <div class="deletion-prompt-wrap">
+          <div class="deletion-prompt-head">
+            <span>Спреман захтев за admin@crnbg.org</span>
+            <span class="badge badge-outline"><i data-lucide="key-round"></i><span>Код није генерисан</span></span>
+          </div>
+          <pre class="deletion-prompt-pre">${esc(promptText)}</pre>
+        </div>
+
+        <div class="deletion-actions">
+          <button id="btn-gen-deletion-code" class="btn btn-outline btn-sm is-danger-btn" type="button">
+            <i data-lucide="key-round"></i><span>Генериши потврдни код</span>
+          </button>
+        </div>`;
+      icons();
+      return;
+    }
+
+    const mailSubject = encodeURIComponent(`Захтев за брисање налога (@${a.username})`);
+    const mailBody = encodeURIComponent(promptText);
+    const mailHref = `mailto:admin@crnbg.org?subject=${mailSubject}&body=${mailBody}`;
+
+    box.innerHTML = `
+      <div class="deletion-info-box is-warning">
+        <i data-lucide="shield-alert"></i>
+        <div>
+          Потврдни код је генерисан${reqDay ? ` (${esc(reqDay)})` : ''}. Копирај захтев испод и пошаљи га на <b>admin@crnbg.org</b>.
+          Нови код није могуће поново генерисати док га администратор не потврди.
+        </div>
+      </div>
+
+      <div class="deletion-prompt-wrap">
+        <div class="deletion-prompt-head">
+          <span>Спреман захтев за admin@crnbg.org</span>
+          <span class="badge badge-danger"><i data-lucide="lock"></i><span>Код генерисан (закључано)</span></span>
+        </div>
+        <pre class="deletion-prompt-pre" id="deletion-prompt-text">${esc(promptText)}</pre>
+      </div>
+
+      <div class="deletion-actions">
+        <button class="btn btn-primary btn-sm" type="button" data-copy-deletion-prompt>
+          <i data-lucide="copy"></i><span>Копирај захтев</span>
+        </button>
+        <a class="btn btn-outline btn-sm" href="${mailHref}">
+          <i data-lucide="mail"></i><span>Пошаљи на admin@crnbg.org</span>
+        </a>
+        <button class="btn btn-outline btn-sm" type="button" disabled>
+          <i data-lucide="lock"></i><span>Код се може генерисати само једном</span>
+        </button>
+      </div>`;
+    icons();
+  }
+
+  async function submitClearData(btn) {
+    const err = $('#clear-data-error');
+    if (err) err.hidden = true;
+
+    const lists = Boolean($('#clear-opt-lists')?.checked);
+    const keshkici = Boolean($('#clear-opt-keshkici')?.checked);
+    const transactions = keshkici || Boolean($('#clear-opt-txs')?.checked);
+
+    if (!lists && !transactions && !keshkici) {
+      if (err) {
+        err.textContent = 'Изабери бар једну врсту података коју желиш да обришеш.';
+        err.hidden = false;
+      }
+      return;
+    }
+
+    if (!btn.classList.contains('is-confirm-danger')) {
+      btn.classList.add('is-confirm-danger');
+      btn.innerHTML = '<i data-lucide="alert-triangle"></i><span>Потврди брисање података?</span>';
+      icons();
+      setTimeout(() => {
+        if (!btn.isConnected || !btn.classList.contains('is-confirm-danger')) return;
+        btn.classList.remove('is-confirm-danger');
+        btn.innerHTML = '<i data-lucide="trash-2"></i><span>Обриши податке</span>';
+        icons();
+      }, 4000);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      await api('/api/account/clear-data', {
+        method: 'POST',
+        body: { keshkici, transactions, lists },
+      });
+      btn.classList.remove('is-confirm-danger');
+      btn.innerHTML = '<i data-lucide="trash-2"></i><span>Обриши податке</span>';
+      icons();
+      state.data = null;
+      state.lists = [];
+      state.currentList = null;
+      state.selectedKeshkicFilter = 0;
+      toast('Изабрани подаци су обрисани');
+      await Promise.all([load(), loadHistory()]);
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) {
+        if (err) {
+          err.textContent = ex.message;
+          err.hidden = false;
+        } else {
+          toast(ex.message, 'error');
+        }
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function generateDeletionCode(btn) {
+    if (!btn.classList.contains('is-confirm-danger')) {
+      btn.classList.add('is-confirm-danger');
+      btn.innerHTML = '<i data-lucide="alert-triangle"></i><span>Потврди (могуће само једном)?</span>';
+      icons();
+      setTimeout(() => {
+        if (!btn.isConnected || !btn.classList.contains('is-confirm-danger')) return;
+        btn.classList.remove('is-confirm-danger');
+        btn.innerHTML = '<i data-lucide="key-round"></i><span>Генериши потврдни код</span>';
+        icons();
+      }, 4000);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      const updated = await api('/api/account/deletion-code', { method: 'POST' });
+      state.account = updated;
+      renderSettingsPage();
+      await copyText(buildDeletionPrompt(updated), 'Потврдни код је генерисан и захтев је копиран');
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) {
+        toast(ex.message, 'error');
+        await loadSettingsPage();
+      }
+    } finally {
+      if (btn.isConnected) btn.disabled = false;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Админ панел (/admin)
+  // ---------------------------------------------------------------
+  async function copyText(text, successMsg) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(successMsg);
+    } catch {
+      toast(text);
+    }
+  }
+
+  let adminReqSeq = 0;
+  let adminSearchTimer = null;
+
+  async function loadAdminPage(seq) {
+    const reqId = ++adminReqSeq;
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(state.adminUsersPage || 1));
+      params.set('invitesPage', String(state.adminInvitesPage || 1));
+      if (state.adminQuery) params.set('q', state.adminQuery);
+
+      const data = await api(`/api/admin/overview?${params.toString()}`);
+      if (reqId !== adminReqSeq || (seq && seq !== routeSeq)) return;
+      state.admin = data;
+      if (data.usersMeta && data.usersMeta.page) state.adminUsersPage = data.usersMeta.page;
+      if (data.invitesMeta && data.invitesMeta.page) state.adminInvitesPage = data.invitesMeta.page;
+      renderAdminPage();
+    } catch (ex) {
+      if (ex instanceof Unauthorized || reqId !== adminReqSeq || (seq && seq !== routeSeq)) return;
+      toast(ex.message, 'error');
+      navigate('/');
+    }
+  }
+
+  function renderAdminPager(pagerSel, infoSel, prevSel, nextSel, meta) {
+    const pager = $(pagerSel);
+    if (!pager || !meta) return;
+    if (meta.totalPages <= 1) {
+      pager.hidden = true;
+      return;
+    }
+    const start = (meta.page - 1) * meta.pageSize + 1;
+    const end = Math.min(meta.total, meta.page * meta.pageSize);
+    const info = $(infoSel);
+    if (info) {
+      info.textContent = `Приказано ${start}–${end} од ${meta.total} · страна ${meta.page} од ${meta.totalPages}`;
+    }
+    const prevBtn = $(prevSel);
+    const nextBtn = $(nextSel);
+    if (prevBtn) prevBtn.disabled = meta.page <= 1;
+    if (nextBtn) nextBtn.disabled = meta.page >= meta.totalPages;
+    pager.hidden = false;
+  }
+
+  function renderAdminPage() {
+    if (!state.admin) return;
+    const users = state.admin.users || [];
+    const invites = state.admin.invites || [];
+    const st = state.admin.stats || {};
+    const totalUsers = st.totalUsers != null ? st.totalUsers : users.length;
+    const activeCount = st.activeInvites != null ? st.activeInvites : invites.filter((c) => !c.usedAt && !c.usedBy).length;
+    const usedCount = st.usedInvites != null ? st.usedInvites : invites.length - activeCount;
+    const members = Math.max(0, totalUsers - 1);
+
+    if ($('#admin-stat-users')) $('#admin-stat-users').textContent = String(totalUsers);
+    if ($('#admin-stat-users-sub')) {
+      $('#admin-stat-users-sub').textContent = members > 0
+        ? `1 админ · ${members} ${plural(members, 'члан', 'члана', 'чланова')}`
+        : 'само администратор';
+    }
+    if ($('#admin-stat-active-codes')) $('#admin-stat-active-codes').textContent = String(activeCount);
+    if ($('#admin-stat-active-sub')) {
+      $('#admin-stat-active-sub').textContent = activeCount > 0
+        ? `${activeCount} ${plural(activeCount, 'код спреман', 'кода спремна', 'кодова спремно')}`
+        : 'нема активних кодова';
+    }
+    if ($('#admin-stat-used-codes')) $('#admin-stat-used-codes').textContent = String(usedCount);
+    if ($('#admin-stat-used-sub')) {
+      $('#admin-stat-used-sub').textContent = `${usedCount} ${plural(usedCount, 'регистрација', 'регистрације', 'регистрација')}`;
+    }
+
+    const pendingDeletions = state.admin.pendingDeletions
+      || users.filter((u) => !u.isAdmin && u.deletionCode);
+    const delCard = $('#admin-deletions-card');
+    const delBox = $('#admin-deletions-list');
+    if (delCard && delBox) {
+      delCard.hidden = pendingDeletions.length === 0;
+      if (pendingDeletions.length > 0) {
+        delBox.innerHTML = pendingDeletions.map((u) => {
+          const title = u.displayName || u.username;
+          const reqDay = u.deletionRequestedAt ? u.deletionRequestedAt.split('T')[0] : '';
+          return `
+            <div class="admin-row" data-del-req-user="${u.id}">
+              <div class="admin-row-icon is-danger">
+                <i data-lucide="user-x"></i>
+              </div>
+              <div class="admin-row-main">
+                <div class="admin-row-title">
+                  <span class="admin-user-name">${esc(title)}</span>
+                  <span class="admin-user-handle">@${esc(u.username)}</span>
+                  <span class="badge badge-outline">ID: #${u.id}</span>
+                  <button class="invite-code-pill" type="button" data-copy-code="${esc(u.deletionCode)}" title="Копирај потврдни код">
+                    <span>КОД: ${esc(u.deletionCode)}</span>
+                  </button>
+                </div>
+                <div class="admin-row-meta">
+                  <span>Захтев генерисан${reqDay ? ' ' + esc(reqDay) : ''} · упореди са поруком на admin@crnbg.org</span>
+                </div>
+              </div>
+              <div class="admin-row-actions">
+                <button class="btn btn-outline btn-sm" type="button" data-clear-del-code="${u.id}" title="Поништи код (откључава кориснику ново генерисање)">
+                  <i data-lucide="rotate-ccw"></i><span>Поништи код</span>
+                </button>
+                <button class="btn btn-outline btn-sm is-danger-btn" type="button" data-delete-user="${u.id}" data-delete-label="Потврди брисање" title="Потврди и трајно обриши налог">
+                  <i data-lucide="trash-2"></i><span>Потврди брисање</span>
+                </button>
+              </div>
+            </div>`;
+        }).join('');
+      } else {
+        delBox.innerHTML = '';
+      }
+    }
+
+    const invBox = $('#admin-invites-list');
+    if (invBox) {
+      if (!invites.length) {
+        invBox.innerHTML = `
+          <div class="empty" style="padding: 2.25rem 1rem;">
+            <span class="empty-icon"><i data-lucide="key-round"></i></span>
+            <p class="muted">Још нема генерисаних кодова за регистрацију.</p>
+            <button class="btn btn-primary btn-sm" type="button" data-admin-action="generate-invite">
+              <i data-lucide="plus"></i><span>Генериши први код</span>
+            </button>
+          </div>`;
+      } else {
+        invBox.innerHTML = invites.map((ic) => {
+          const isUsed = Boolean(ic.usedAt || ic.usedBy);
+          const createdDay = ic.createdAt ? ic.createdAt.split('T')[0] : '';
+          const usedDay = ic.usedAt ? ic.usedAt.split('T')[0] : '';
+          const statusBadge = isUsed
+            ? '<span class="badge badge-outline"><i data-lucide="check"></i><span>Искоришћен</span></span>'
+            : '<span class="badge badge-success"><i data-lucide="sparkles"></i><span>Активан</span></span>';
+          const usedInfo = isUsed
+            ? (ic.usedBy > 0 && ic.usedByUsername && ic.usedByUsername !== 'обрисан налог'
+              ? `Искористио <button class="admin-user-link" type="button" data-open-user="${esc(ic.usedByUsername)}">@${esc(ic.usedByUsername)}</button>${usedDay ? ' · ' + esc(usedDay) : ''}`
+              : `Искоришћен${ic.usedByUsername ? ' (' + esc(ic.usedByUsername) + ')' : ''}${usedDay ? ' · ' + esc(usedDay) : ''}`)
+            : `Креиран ${esc(createdDay || 'данас')} · важи за 1 регистрацију`;
+
+          return `
+            <div class="admin-row ${isUsed ? 'is-used' : ''}" data-invite-id="${ic.id}">
+              <div class="admin-row-icon ${isUsed ? '' : 'is-active'}">
+                <i data-lucide="${isUsed ? 'check-circle-2' : 'key-round'}"></i>
+              </div>
+              <div class="admin-row-main">
+                <div class="admin-row-title">
+                  <button class="invite-code-pill" type="button" data-copy-code="${esc(ic.code)}" title="Кликни да копираш код">
+                    <span>${esc(ic.code)}</span>
+                  </button>
+                  ${statusBadge}
+                </div>
+                <div class="admin-row-meta">
+                  <span>${usedInfo}</span>
+                </div>
+              </div>
+              <div class="admin-row-actions">
+                ${!isUsed ? `
+                  <button class="btn btn-outline btn-sm" type="button" data-copy-code="${esc(ic.code)}">
+                    <i data-lucide="copy"></i><span>Копирај</span>
+                  </button>
+                ` : ''}
+                <button class="btn btn-ghost btn-icon btn-sm" type="button" data-delete-invite="${ic.id}" title="${isUsed ? 'Уклони из евиденције' : 'Повуци код'}" aria-label="Обриши код">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
+            </div>`;
+        }).join('');
+      }
+    }
+    renderAdminPager('#admin-invites-pager', '#admin-invites-pager-info', '#admin-invites-prev', '#admin-invites-next', state.admin.invitesMeta);
+
+    const uMeta = state.admin.usersMeta;
+    const subEl = $('#admin-users-sub');
+    if (subEl) {
+      if (state.adminQuery && uMeta) {
+        subEl.textContent = `Претрага „${state.adminQuery}” — пронађено ${uMeta.total} ${plural(uMeta.total, 'налог', 'налога', 'налога')}.`;
+      } else {
+        subEl.textContent = 'Само први налог има администраторска права (приказ до 15 по страници).';
+      }
+    }
+    const clearBtn = $('#admin-user-search-clear');
+    if (clearBtn) clearBtn.hidden = !state.adminQuery;
+
+    const usrBox = $('#admin-users-list');
+    if (usrBox) {
+      if (!users.length && state.adminQuery) {
+        usrBox.innerHTML = `
+          <div class="empty" style="padding: 2.25rem 1rem;">
+            <span class="empty-icon"><i data-lucide="search-x"></i></span>
+            <p class="muted">Нема налога за упит „<b>${esc(state.adminQuery)}</b>”.</p>
+            <button class="btn btn-outline btn-sm" type="button" data-clear-admin-search>
+              <i data-lucide="x"></i><span>Поништи претрагу</span>
+            </button>
+          </div>`;
+      } else {
+        usrBox.innerHTML = users.map((u, idx) => {
+          const title = u.displayName || u.username;
+          const admBadge = u.isAdmin
+            ? '<span class="badge badge-admin"><i data-lucide="shield"></i><span>Админ</span></span>'
+            : '';
+          const delBadge = (!u.isAdmin && u.deletionCode)
+            ? '<span class="badge badge-danger"><i data-lucide="alert-triangle"></i><span>Захтева брисање</span></span>'
+            : '';
+          return `
+            <div class="admin-row" data-user-id="${u.id}">
+              <div class="admin-user-avatar" data-admin-avatar="${idx}">
+                <i data-lucide="user"></i>
+              </div>
+              <div class="admin-row-main">
+                <div class="admin-row-title">
+                  <span class="admin-user-name">${esc(title)}</span>
+                  <span class="admin-user-handle">@${esc(u.username)}</span>
+                  ${admBadge}
+                  ${delBadge}
+                </div>
+                <div class="admin-row-meta">
+                  <span>ID: #${u.id} · Члан од ${esc(formatMemberSince(u.memberSince))}</span>
+                </div>
+              </div>
+              <div class="admin-row-actions">
+                <button class="btn btn-outline btn-sm" type="button" data-open-user="${esc(u.username)}">
+                  <i data-lucide="user"></i><span>Налог</span>
+                </button>
+                ${!u.isAdmin ? `
+                  <button class="btn btn-ghost btn-icon btn-sm" type="button" data-delete-user="${u.id}" title="Обриши налог" aria-label="Обриши налог">
+                    <i data-lucide="trash-2"></i>
+                  </button>
+                ` : ''}
+              </div>
+            </div>`;
+        }).join('');
+
+        users.forEach((u, idx) => {
+          setAvatarBox($(`[data-admin-avatar="${idx}"]`, usrBox), u.avatar, u.displayName || u.username);
+        });
+      }
+    }
+    renderAdminPager('#admin-users-pager', '#admin-users-pager-info', '#admin-users-prev', '#admin-users-next', uMeta);
+
+    icons();
+  }
+
+  async function generateInviteCode(btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const ic = await api('/api/admin/invites', { method: 'POST' });
+      state.adminInvitesPage = 1;
+      await copyText(ic.code, `Код копиран: ${ic.code}`);
+      await loadAdminPage();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function deleteInviteCode(id, btn) {
+    if (!btn.classList.contains('is-confirm')) {
+      btn.classList.add('is-confirm');
+      btn.textContent = 'Обриши?';
+      setTimeout(() => {
+        if (!btn.isConnected) return;
+        btn.classList.remove('is-confirm');
+        btn.innerHTML = '<i data-lucide="trash-2"></i>';
+        icons();
+      }, 3000);
+      return;
+    }
+    try {
+      await api(`/api/admin/invites/${id}`, { method: 'DELETE' });
+      toast('Код уклоњен');
+      await loadAdminPage();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function clearUserDeletionCode(id, btn) {
+    if (!btn.classList.contains('is-confirm')) {
+      btn.classList.add('is-confirm');
+      btn.textContent = 'Поништи код?';
+      setTimeout(() => {
+        if (!btn.isConnected) return;
+        btn.classList.remove('is-confirm');
+        btn.innerHTML = '<i data-lucide="rotate-ccw"></i><span>Поништи код</span>';
+        icons();
+      }, 3500);
+      return;
+    }
+    try {
+      await api(`/api/admin/users/${id}/deletion-code`, { method: 'DELETE' });
+      toast('Потврдни код за брисање је поништен');
+      await loadAdminPage();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  async function deleteUserAccount(id, btn) {
+    if (!btn.classList.contains('is-confirm')) {
+      const label = btn.dataset.deleteLabel;
+      btn.classList.add('is-confirm');
+      btn.textContent = 'Обриши налог?';
+      setTimeout(() => {
+        if (!btn.isConnected) return;
+        btn.classList.remove('is-confirm');
+        btn.innerHTML = label
+          ? `<i data-lucide="trash-2"></i><span>${esc(label)}</span>`
+          : '<i data-lucide="trash-2"></i>';
+        icons();
+      }, 3500);
+      return;
+    }
+    try {
+      await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+      toast('Налог и његови подаци су обрисани');
+      await loadAdminPage();
+    } catch (ex) {
+      if (!(ex instanceof Unauthorized)) toast(ex.message, 'error');
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Навигација и рутирање (/, /liste, /liste/:id, /u/@korisnik, /podesavanja, /admin)
   // ---------------------------------------------------------------
   let routeSeq = 0;
 
@@ -1076,12 +1796,47 @@
     const vLists = $('#view-lists');
     const vDetail = $('#view-list-detail');
     const vProfile = $('#view-profile');
+    const vSettings = $('#view-settings');
+    const vAdmin = $('#view-admin');
     const btnLists = $('#btn-lists');
 
-    if (path === '/liste') {
+    if (path === '/admin' || path.startsWith('/admin/')) {
+      if (!state.account || !state.account.isAdmin) {
+        toast('Приступ је дозвољен само администратору', 'error');
+        history.replaceState(null, '', '/');
+        return routeTo('/');
+      }
+      if (vDash) vDash.hidden = true;
+      if (vLists) vLists.hidden = true;
+      if (vDetail) vDetail.hidden = true;
+      if (vProfile) vProfile.hidden = true;
+      if (vSettings) vSettings.hidden = true;
+      if (vAdmin) vAdmin.hidden = false;
+      if (btnLists) btnLists.classList.remove('btn-primary');
+      if (btnLists) btnLists.classList.add('btn-outline');
+      document.title = 'Keshk >> Админ панел';
+      await Promise.all([loadAdminPage(seq), !state.data ? load() : null]);
+    } else if (path === '/podesavanja' || path.startsWith('/podesavanja/')) {
+      if (vDash) vDash.hidden = true;
+      if (vLists) vLists.hidden = true;
+      if (vDetail) vDetail.hidden = true;
+      if (vProfile) vProfile.hidden = true;
+      if (vAdmin) vAdmin.hidden = true;
+      if (vSettings) vSettings.hidden = false;
+      if (btnLists) btnLists.classList.remove('btn-primary');
+      if (btnLists) btnLists.classList.add('btn-outline');
+      if (window.location.pathname !== '/podesavanja') {
+        history.replaceState(null, '', '/podesavanja');
+      }
+      document.title = 'Keshk >> Подешавања';
+      renderSettingsPage();
+      await Promise.all([loadSettingsPage(seq), !state.data ? load() : null]);
+    } else if (path === '/liste') {
       if (vDash) vDash.hidden = true;
       if (vDetail) vDetail.hidden = true;
       if (vProfile) vProfile.hidden = true;
+      if (vSettings) vSettings.hidden = true;
+      if (vAdmin) vAdmin.hidden = true;
       if (vLists) vLists.hidden = false;
       if (btnLists) btnLists.classList.add('btn-primary');
       if (btnLists) btnLists.classList.remove('btn-outline');
@@ -1092,6 +1847,8 @@
       if (vDash) vDash.hidden = true;
       if (vLists) vLists.hidden = true;
       if (vProfile) vProfile.hidden = true;
+      if (vSettings) vSettings.hidden = true;
+      if (vAdmin) vAdmin.hidden = true;
       if (vDetail) vDetail.hidden = false;
       if (btnLists) btnLists.classList.add('btn-primary');
       if (btnLists) btnLists.classList.remove('btn-outline');
@@ -1100,6 +1857,8 @@
       if (vDash) vDash.hidden = true;
       if (vLists) vLists.hidden = true;
       if (vDetail) vDetail.hidden = true;
+      if (vSettings) vSettings.hidden = true;
+      if (vAdmin) vAdmin.hidden = true;
       if (vProfile) vProfile.hidden = false;
       if (btnLists) btnLists.classList.remove('btn-primary');
       if (btnLists) btnLists.classList.add('btn-outline');
@@ -1123,6 +1882,8 @@
       if (vLists) vLists.hidden = true;
       if (vDetail) vDetail.hidden = true;
       if (vProfile) vProfile.hidden = true;
+      if (vSettings) vSettings.hidden = true;
+      if (vAdmin) vAdmin.hidden = true;
       if (vDash) vDash.hidden = false;
       if (btnLists) btnLists.classList.remove('btn-primary');
       if (btnLists) btnLists.classList.add('btn-outline');
@@ -1133,6 +1894,7 @@
     icons();
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
+
   // ---------------------------------------------------------------
   // Листе за куповину (/liste)
   // ---------------------------------------------------------------
@@ -1476,10 +2238,125 @@
       try {
         await api('/api/login', { method: 'POST', body: { username: $('#login-username').value, password: $('#login-password').value } });
         $('#login-password').value = '';
+        resetClientState();
         await showApp(await api('/api/me'));
       } catch (ex) {
         err.textContent = ex.message;
         err.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Регистрација (позивни код + Onboarding)
+    $('#btn-show-register')?.addEventListener('click', () => openRegisterCard());
+    $('#btn-back-to-login')?.addEventListener('click', closeRegisterCard);
+    $('#btn-ob-back-code')?.addEventListener('click', () => showOnboardingStep('code'));
+    $('#btn-ob-back-account')?.addEventListener('click', () => showOnboardingStep('account'));
+
+    $('#reg-code')?.addEventListener('input', (e) => {
+      e.target.value = formatInviteCodeInput(e.target.value);
+    });
+
+    $('#reg-code-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = $('#reg-code-error');
+      const btn = $('#reg-code-submit');
+      err.hidden = true;
+      const code = ($('#reg-code').value || '').trim();
+      if (!code) {
+        err.textContent = 'Унеси код за регистрацију.';
+        err.hidden = false;
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const res = await api('/api/register/verify-code', { method: 'POST', body: { code } });
+        state.onboarding.code = res.code;
+        $('#reg-code').value = res.code;
+        showOnboardingStep('account');
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('#reg-account-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = $('#reg-account-error');
+      const btn = $('#reg-account-next');
+      err.hidden = true;
+      const failStep = (msg) => { err.textContent = msg; err.hidden = false; };
+
+      const username = ($('#reg-username').value || '').trim().replace(/^@+/, '');
+      const displayName = ($('#reg-display-name').value || '').trim();
+      const pw = $('#reg-password').value || '';
+      const pw2 = $('#reg-password-confirm').value || '';
+
+      if (username.length < 2) return failStep('Унеси корисничко име (бар 2 знака).');
+      if (pw.length < 6) return failStep('Лозинка мора имати бар 6 знакова.');
+      if (pw !== pw2) return failStep('Лозинке се не поклапају.');
+
+      btn.disabled = true;
+      try {
+        const res = await api('/api/register/check-username', {
+          method: 'POST',
+          body: { code: state.onboarding.code, username },
+        });
+        state.onboarding.username = res.username;
+        state.onboarding.displayName = displayName;
+        state.onboarding.password = pw;
+        $('#reg-username').value = res.username;
+        showOnboardingStep('profile');
+      } catch (ex) {
+        failStep(ex.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('#reg-avatar')?.addEventListener('input', updateOnboardingPreview);
+    $('#reg-banner')?.addEventListener('input', updateOnboardingPreview);
+
+    $('#reg-profile-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = $('#reg-profile-error');
+      const btn = $('#reg-finish-submit');
+      err.hidden = true;
+      const failStep = (msg) => { err.textContent = msg; err.hidden = false; };
+
+      const avatar = ($('#reg-avatar').value || '').trim();
+      const banner = ($('#reg-banner').value || '').trim();
+      const bio = ($('#reg-bio').value || '').trim();
+
+      if (avatar && !isHttpUrl(avatar)) return failStep('Профилна слика мора почињати са https:// или http://');
+      if (banner && !isHttpUrl(banner)) return failStep('Позадина мора почињати са https:// или http://');
+
+      btn.disabled = true;
+      try {
+        const me = await api('/api/register', {
+          method: 'POST',
+          body: {
+            code: state.onboarding.code,
+            username: state.onboarding.username,
+            password: state.onboarding.password,
+            displayName: state.onboarding.displayName,
+            avatar,
+            banner,
+            bio,
+          },
+        });
+        resetOnboardingForms();
+        $('#register-card').hidden = true;
+        $('#login-form').hidden = false;
+        if (window.location.search) history.replaceState(null, '', window.location.pathname);
+        resetClientState();
+        await showApp(me);
+        toast(`Добродошао, @${me.username}!`);
+      } catch (ex) {
+        failStep(ex.message);
       } finally {
         btn.disabled = false;
       }
@@ -1495,11 +2372,15 @@
     $('#menu-logout').addEventListener('click', async () => {
       closeSettingsMenu();
       await api('/api/logout', { method: 'POST' }).catch(() => {});
+      resetClientState();
+      resetOnboardingForms();
       if (window.location.pathname !== '/') history.replaceState(null, '', '/');
       showLogin({ manualLogout: true });
     });
     $('#menu-account').addEventListener('click', openMyProfile);
     $('#menu-profile-header')?.addEventListener('click', openMyProfile);
+    $('#menu-settings')?.addEventListener('click', () => navigate('/podesavanja'));
+    $('#menu-admin')?.addEventListener('click', () => navigate('/admin'));
     $('#menu-export').addEventListener('click', exportData);
     $('#menu-import').addEventListener('click', () => { closeSettingsMenu(); $('#import-input').click(); });
     $('#import-input').addEventListener('change', (e) => {
@@ -1508,25 +2389,125 @@
       importData(file);
     });
 
-    // Профил и лозинка
+    // Страница Подешавања (/podesavanja)
+    $('#back-from-settings')?.addEventListener('click', () => navigate('/'));
+    $('#settings-edit-account')?.addEventListener('click', openProfileDialog);
+    $('#settings-change-pw')?.addEventListener('click', openPasswordDialog);
+    $('#settings-export')?.addEventListener('click', exportData);
+    $('#settings-import')?.addEventListener('click', () => $('#import-input').click());
+    $('#clear-opt-keshkici')?.addEventListener('change', syncClearCheckboxes);
+    $('#clear-opt-lists')?.addEventListener('change', syncClearCheckboxes);
+    $('#clear-opt-txs')?.addEventListener('change', syncClearCheckboxes);
+    $('#btn-clear-data')?.addEventListener('click', (e) => submitClearData(e.currentTarget));
+    $('#settings-deletion-body')?.addEventListener('click', (e) => {
+      const genBtn = e.target.closest('#btn-gen-deletion-code');
+      if (genBtn) return generateDeletionCode(genBtn);
+      const copyPromptBtn = e.target.closest('[data-copy-deletion-prompt]');
+      if (copyPromptBtn && state.account) {
+        return copyText(buildDeletionPrompt(state.account), 'Захтев за брисање налога је копиран');
+      }
+      if (e.target.closest('[data-go-admin]')) return navigate('/admin');
+    });
+
+    // Админ панел (/admin) — претрага и пагинација (15 по страници)
+    const resetAdminSearch = () => {
+      if (adminSearchTimer) clearTimeout(adminSearchTimer);
+      state.adminQuery = '';
+      state.adminUsersPage = 1;
+      if ($('#admin-user-search')) $('#admin-user-search').value = '';
+      if ($('#admin-user-search-clear')) $('#admin-user-search-clear').hidden = true;
+      loadAdminPage();
+    };
+    $('#admin-user-search')?.addEventListener('input', (e) => {
+      const val = (e.target.value || '').trim();
+      if ($('#admin-user-search-clear')) $('#admin-user-search-clear').hidden = !val;
+      if (adminSearchTimer) clearTimeout(adminSearchTimer);
+      adminSearchTimer = setTimeout(() => {
+        if (state.adminQuery === val && state.adminUsersPage === 1) return;
+        state.adminQuery = val;
+        state.adminUsersPage = 1;
+        loadAdminPage();
+      }, 220);
+    });
+    $('#admin-user-search-clear')?.addEventListener('click', () => {
+      resetAdminSearch();
+      $('#admin-user-search')?.focus();
+    });
+    $('#admin-users-prev')?.addEventListener('click', () => {
+      if (state.adminUsersPage > 1) {
+        state.adminUsersPage--;
+        loadAdminPage();
+      }
+    });
+    $('#admin-users-next')?.addEventListener('click', () => {
+      const tp = state.admin && state.admin.usersMeta ? state.admin.usersMeta.totalPages : 1;
+      if (state.adminUsersPage < tp) {
+        state.adminUsersPage++;
+        loadAdminPage();
+      }
+    });
+    $('#admin-invites-prev')?.addEventListener('click', () => {
+      if (state.adminInvitesPage > 1) {
+        state.adminInvitesPage--;
+        loadAdminPage();
+      }
+    });
+    $('#admin-invites-next')?.addEventListener('click', () => {
+      const tp = state.admin && state.admin.invitesMeta ? state.admin.invitesMeta.totalPages : 1;
+      if (state.adminInvitesPage < tp) {
+        state.adminInvitesPage++;
+        loadAdminPage();
+      }
+    });
+
+    $('#back-from-admin')?.addEventListener('click', () => navigate('/'));
+    $('#btn-generate-invite')?.addEventListener('click', (e) => generateInviteCode(e.currentTarget));
+    $('#btn-generate-invite-card')?.addEventListener('click', (e) => generateInviteCode(e.currentTarget));
+    $('#view-admin')?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-clear-admin-search]')) return resetAdminSearch();
+      const genBtn = e.target.closest('[data-admin-action="generate-invite"]');
+      if (genBtn) return generateInviteCode(genBtn);
+      const copyBtn = e.target.closest('[data-copy-code]');
+      if (copyBtn) return copyText(copyBtn.dataset.copyCode, `Код копиран: ${copyBtn.dataset.copyCode}`);
+      const delInvBtn = e.target.closest('[data-delete-invite]');
+      if (delInvBtn) return deleteInviteCode(Number(delInvBtn.dataset.deleteInvite), delInvBtn);
+      const openUserBtn = e.target.closest('[data-open-user]');
+      if (openUserBtn) return navigate(`/u/@${encodeURIComponent(openUserBtn.dataset.openUser)}`);
+      const clrDelBtn = e.target.closest('[data-clear-del-code]');
+      if (clrDelBtn) return clearUserDeletionCode(Number(clrDelBtn.dataset.clearDelCode), clrDelBtn);
+      const delUserBtn = e.target.closest('[data-delete-user]');
+      if (delUserBtn) return deleteUserAccount(Number(delUserBtn.dataset.deleteUser), delUserBtn);
+    });
+
+    // Налог и лозинка
     $('#profile-form').addEventListener('submit', saveProfile);
     $('#prof-avatar').addEventListener('input', updateProfilePreview);
     $('#prof-banner').addEventListener('input', updateProfilePreview);
     $('#password-form').addEventListener('submit', changePassword);
     $('#back-from-profile')?.addEventListener('click', () => navigate('/'));
     $('#profile-container')?.addEventListener('click', async (e) => {
-      if (e.target.closest('#btn-edit-profile')) return openProfileDialog();
-      if (e.target.closest('#btn-open-pw')) return openPasswordDialog();
       if (e.target.closest('#btn-notfound-home')) return navigate('/');
-      if (e.target.closest('#btn-copy-profile') && state.currentProfile) {
+      if (e.target.closest('#btn-qr-profile') && state.currentProfile) {
+        return openProfileQRDialog(state.currentProfile);
+      }
+      const copyBtn = e.target.closest('#btn-copy-profile');
+      if (copyBtn && state.currentProfile) {
         const url = `${window.location.origin}/u/@${encodeURIComponent(state.currentProfile.username)}`;
-        try {
-          await navigator.clipboard.writeText(url);
-          toast('Линк профила копиран');
-        } catch {
-          toast(url);
+        await copyText(url, 'Линк налога копиран');
+        if (copyBtn.isConnected) {
+          copyBtn.innerHTML = '<i data-lucide="check"></i>';
+          icons();
+          setTimeout(() => {
+            if (!copyBtn.isConnected) return;
+            copyBtn.innerHTML = '<i data-lucide="link-2"></i>';
+            icons();
+          }, 1400);
         }
       }
+    });
+    $('#qr-copy-link')?.addEventListener('click', async () => {
+      const url = $('#qr-user-url')?.dataset.url;
+      if (url) await copyText(url, 'Линк налога копиран');
     });
 
     // Навигација

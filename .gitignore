@@ -1,7 +1,11 @@
 .env
+.env.*
+!.env.example
 data/
 *.db
 *.db-*
 *.exe
 /keshk
 keshk-rpi5-arm64
+.neon
+node_modules/

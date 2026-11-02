@@ -36,6 +36,20 @@ if (-not (Test-Path ".env")) {
     }
 }
 
+# 3. Учитавање порта из .env (PORT из окружења има предност)
+$port = $env:PORT
+if ([string]::IsNullOrWhiteSpace($port)) {
+    $port = '3000'
+    foreach ($line in Get-Content ".env") {
+        if ($line -match '^\s*PORT\s*=\s*([^#]*?)\s*$') {
+            $value = $Matches[1].Trim().Trim('"').Trim("'")
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                $port = $value
+            }
+        }
+    }
+}
+
 # 3. Крос-компајлирање за Raspberry Pi 5 (Linux arm64)
 if ($Target -eq 'rpi5') {
     Write-Host "[BUILD] Компајлирам за Raspberry Pi 5 (Linux ARM64)..." -ForegroundColor Magenta
@@ -66,5 +80,5 @@ if ($running) {
 Write-Host "[BUILD] Компајлирам keshk.exe..." -ForegroundColor Yellow
 go build -o keshk.exe .
 Write-Host "[START] Покрећем Keshk сервер..." -ForegroundColor Green
-Write-Host "[INFO] Отвори у прегледачу: http://localhost:3000" -ForegroundColor Cyan
+Write-Host "[INFO] Отвори у прегледачу: http://localhost:$port" -ForegroundColor Cyan
 & ".\keshk.exe"

@@ -13,11 +13,12 @@ import (
 )
 
 type Handlers struct {
-	cfg     Config
-	store   *Store
-	rates   *Rates
-	auth    *Auth
-	limiter *LoginLimiter
+	cfg           Config
+	store         *Store
+	rates         *Rates
+	auth          *Auth
+	limiter       *RateLimiter
+	inviteLimiter *RateLimiter
 }
 
 type MonthSummary struct {
@@ -73,18 +74,21 @@ func (h *Handlers) Login(c fiber.Ctx) error {
 	}
 	ip := clientIP(c)
 	if blocked, wait := h.limiter.blocked(ip); blocked {
-		c.Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
-		return fail(c, fiber.StatusTooManyRequests, "Превише неуспешних покушаја. Покушај поново за "+strconv.Itoa(int(wait.Minutes())+1)+" мин.")
+		return rejectRateLimited(c, wait)
 	}
-	if !h.auth.checkCredentials(strings.TrimSpace(body.Username), body.Password) {
+	u, ok := h.store.AuthenticateUser(strings.TrimSpace(body.Username), body.Password)
+	if !ok {
 		h.limiter.fail(ip)
 		log.Printf("[WARN] неуспешна пријава са %s", ip)
 		time.Sleep(400 * time.Millisecond)
 		return fail(c, fiber.StatusUnauthorized, "Погрешно корисничко име или лозинка")
 	}
 	h.limiter.success(ip)
-	h.auth.setSession(c)
-	return c.JSON(fiber.Map{"username": h.cfg.Username})
+	h.auth.setSession(c, u)
+	return c.JSON(fiber.Map{
+		"username": u.Username,
+		"isAdmin":  u.IsAdmin,
+	})
 }
 
 func (h *Handlers) Logout(c fiber.Ctx) error {
@@ -92,18 +96,17 @@ func (h *Handlers) Logout(c fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-
 // ---------------------------------------------------------------------
 // Months & Summary
 // ---------------------------------------------------------------------
 
-func (h *Handlers) summary(month string) (MonthSummary, error) {
-	keshkici, err := h.store.ListKeshkici(month)
+func (h *Handlers) summary(userID int64, month string) (MonthSummary, error) {
+	keshkici, err := h.store.ListKeshkici(userID, month)
 	if err != nil {
 		return MonthSummary{}, err
 	}
 
-	totals, err := h.store.MonthTotals(month)
+	totals, err := h.store.MonthTotals(userID, month)
 	if err != nil {
 		return MonthSummary{}, err
 	}
@@ -142,12 +145,13 @@ func (h *Handlers) summary(month string) (MonthSummary, error) {
 }
 
 func (h *Handlers) Month(c fiber.Ctx) error {
+	uid := currentUser(c).ID
 	month := c.Params("month")
 	if !validMonth(month) {
 		return fail(c, fiber.StatusBadRequest, "Неисправан месец")
 	}
 
-	sum, err := h.summary(month)
+	sum, err := h.summary(uid, month)
 	if err != nil {
 		return internal(c, err)
 	}
@@ -157,7 +161,7 @@ func (h *Handlers) Month(c fiber.Ctx) error {
 		keshkicFilter, _ = strconv.ParseInt(kIDStr, 10, 64)
 	}
 
-	txs, err := h.store.ListTx(month, keshkicFilter)
+	txs, err := h.store.ListTx(uid, month, keshkicFilter)
 	if err != nil {
 		return internal(c, err)
 	}
@@ -169,6 +173,7 @@ func (h *Handlers) Month(c fiber.Ctx) error {
 }
 
 func (h *Handlers) History(c fiber.Ctx) error {
+	uid := currentUser(c).ID
 	end := c.Query("end")
 	if !validMonth(end) {
 		end = time.Now().Format("2006-01")
@@ -181,7 +186,7 @@ func (h *Handlers) History(c fiber.Ctx) error {
 	out := make([]MonthHistoryItem, 0, n)
 	for i := n - 1; i >= 0; i-- {
 		m := t.AddDate(0, -i, 0).Format("2006-01")
-		totals, err := h.store.MonthTotals(m)
+		totals, err := h.store.MonthTotals(uid, m)
 		if err != nil {
 			return internal(c, err)
 		}
@@ -263,7 +268,7 @@ func (h *Handlers) CreateKeshkic(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, fiber.StatusBadRequest, err.Error())
 	}
-	created, err := h.store.CreateKeshkic(k)
+	created, err := h.store.CreateKeshkic(currentUser(c).ID, k)
 	if err != nil {
 		return internal(c, err)
 	}
@@ -280,7 +285,7 @@ func (h *Handlers) UpdateKeshkic(c fiber.Ctx) error {
 		return fail(c, fiber.StatusBadRequest, err.Error())
 	}
 	k.ID = id
-	updated, err := h.store.UpdateKeshkic(k)
+	updated, err := h.store.UpdateKeshkic(currentUser(c).ID, k)
 	if errors.Is(err, errNotFound) {
 		return fail(c, fiber.StatusNotFound, "Кешкић не постоји")
 	} else if err != nil {
@@ -290,17 +295,18 @@ func (h *Handlers) UpdateKeshkic(c fiber.Ctx) error {
 }
 
 func (h *Handlers) SetDefaultKeshkic(c fiber.Ctx) error {
+	uid := currentUser(c).ID
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
 		return fail(c, fiber.StatusBadRequest, "Неисправан ID")
 	}
-	if _, err := h.store.GetKeshkic(id); errors.Is(err, errNotFound) {
+	if _, err := h.store.GetKeshkic(uid, id); errors.Is(err, errNotFound) {
 		return fail(c, fiber.StatusNotFound, "Кешкић не постоји")
 	} else if err != nil {
 		return internal(c, err)
 	}
 
-	if err := h.store.SetDefaultKeshkic(id); errors.Is(err, errNotFound) {
+	if err := h.store.SetDefaultKeshkic(uid, id); errors.Is(err, errNotFound) {
 		return fail(c, fiber.StatusNotFound, "Кешкић не постоји")
 	} else if err != nil {
 		return internal(c, err)
@@ -324,7 +330,7 @@ func (h *Handlers) DropKeshkic(c fiber.Ctx) error {
 	if body.Month != "" && !validMonth(body.Month) {
 		return fail(c, fiber.StatusBadRequest, "Неисправан месец")
 	}
-	if err := h.store.DropKeshkic(id, body.Month); errors.Is(err, errNotFound) {
+	if err := h.store.DropKeshkic(currentUser(c).ID, id, body.Month); errors.Is(err, errNotFound) {
 		return fail(c, fiber.StatusNotFound, "Кешкић не постоји")
 	} else if err != nil {
 		return internal(c, err)
@@ -337,7 +343,7 @@ func (h *Handlers) DeleteKeshkic(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, fiber.StatusBadRequest, "Неисправан ID")
 	}
-	if err := h.store.DeleteKeshkic(id); errors.Is(err, errNotFound) {
+	if err := h.store.DeleteKeshkic(currentUser(c).ID, id); errors.Is(err, errNotFound) {
 		return fail(c, fiber.StatusNotFound, "Кешкић не постоји")
 	} else if err != nil {
 		return internal(c, err)
@@ -359,7 +365,7 @@ type txInput struct {
 	Rate      float64 `json:"rate"`
 }
 
-func (h *Handlers) parseTxBody(c fiber.Ctx) (Tx, string, error) {
+func (h *Handlers) parseTxBody(c fiber.Ctx, userID int64) (Tx, string, error) {
 	var in txInput
 	if err := c.Bind().JSON(&in); err != nil {
 		return Tx{}, "", errors.New("Неисправан захтев")
@@ -407,9 +413,9 @@ func (h *Handlers) parseTxBody(c fiber.Ctx) (Tx, string, error) {
 		}, in.Kind, nil
 	}
 
-	// Ако је трошак, а Кешкић није специфициран, нађи подразумевани
+	// Ако је трошак, а Кешкић није специфициран, нађи подразумевани за овог корисника
 	if in.KeshkicID <= 0 {
-		keshkici, _ := h.store.ListKeshkici(month)
+		keshkici, _ := h.store.ListKeshkici(userID, month)
 		if len(keshkici) > 0 {
 			in.KeshkicID = keshkici[0].ID
 			for _, k := range keshkici {
@@ -420,7 +426,7 @@ func (h *Handlers) parseTxBody(c fiber.Ctx) (Tx, string, error) {
 			}
 		} else {
 			// Направи почетни Кешкић за тај месец
-			newK, err := h.store.CreateKeshkic(Keshkic{
+			newK, err := h.store.CreateKeshkic(userID, Keshkic{
 				Month:     month,
 				Title:     "Мама",
 				Amount:    h.cfg.DefaultKeshkic,
@@ -449,7 +455,8 @@ func (h *Handlers) parseTxBody(c fiber.Ctx) (Tx, string, error) {
 }
 
 func (h *Handlers) CreateTx(c fiber.Ctx) error {
-	t, kind, err := h.parseTxBody(c)
+	uid := currentUser(c).ID
+	t, kind, err := h.parseTxBody(c, uid)
 	if err != nil {
 		return fail(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -460,7 +467,7 @@ func (h *Handlers) CreateTx(c fiber.Ctx) error {
 		if title == "" {
 			title = "Кешкић"
 		}
-		created, err := h.store.CreateKeshkic(Keshkic{
+		created, err := h.store.CreateKeshkic(uid, Keshkic{
 			Month:     t.Month,
 			Title:     title,
 			Amount:    t.Amount,
@@ -476,7 +483,7 @@ func (h *Handlers) CreateTx(c fiber.Ctx) error {
 	}
 
 	// 2. АКО ЈЕ ТРОШАК
-	created, err := h.store.CreateTx(t)
+	created, err := h.store.CreateTx(uid, t)
 	if err != nil {
 		return internal(c, err)
 	}
@@ -484,16 +491,17 @@ func (h *Handlers) CreateTx(c fiber.Ctx) error {
 }
 
 func (h *Handlers) UpdateTx(c fiber.Ctx) error {
+	uid := currentUser(c).ID
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
 		return fail(c, fiber.StatusBadRequest, "Неисправан ID")
 	}
-	t, _, err := h.parseTxBody(c)
+	t, _, err := h.parseTxBody(c, uid)
 	if err != nil {
 		return fail(c, fiber.StatusBadRequest, err.Error())
 	}
 	t.ID = id
-	updated, err := h.store.UpdateTx(t)
+	updated, err := h.store.UpdateTx(uid, t)
 	if errors.Is(err, errNotFound) {
 		return fail(c, fiber.StatusNotFound, "Трансакција не постоји")
 	} else if err != nil {
@@ -507,7 +515,7 @@ func (h *Handlers) DeleteTx(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, fiber.StatusBadRequest, "Неисправан ID")
 	}
-	if err := h.store.DeleteTx(id); errors.Is(err, errNotFound) {
+	if err := h.store.DeleteTx(currentUser(c).ID, id); errors.Is(err, errNotFound) {
 		return fail(c, fiber.StatusNotFound, "Трансакција не постоји")
 	} else if err != nil {
 		return internal(c, err)

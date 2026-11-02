@@ -2,10 +2,9 @@ name: Docker слика
 
 on:
   push:
-    branches:
-      - main
-      - master
     tags:
+      - '[0-9][0-9].[0-9][0-9].[0-9][0-9][0-9][0-9]_*'
+      - '[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]_*'
       - 'v*'
   pull_request:
     branches:
@@ -29,6 +28,17 @@ jobs:
       - name: Преузимање изворног кода
         uses: actions/checkout@v4
 
+      - name: Одређивање ознаке (датум + време)
+        id: build_tag
+        run: |
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="$(TZ=Europe/Belgrade date +'%d.%m.%Y_%H-%M-%S')"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Ознака Docker слике: ${TAG}"
+
       - name: Подешавање Docker Buildx-а
         uses: docker/setup-buildx-action@v3
 
@@ -46,11 +56,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-
+            type=raw,value=latest
+            type=raw,value=${{ steps.build_tag.outputs.tag }}
 
       - name: Изградња и објава (linux/amd64, linux/arm64)
         uses: docker/build-push-action@v7

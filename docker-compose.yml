@@ -1,6 +1,6 @@
 services:
   keshk:
-    image: ${KESHK_IMAGE:-ghcr.io/vltc/keshk:latest}
+    image: ${KESHK_IMAGE:-ghcr.io/crnobog69/keshk:latest}
     build: .
     container_name: keshk
     restart: unless-stopped

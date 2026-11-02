@@ -92,13 +92,22 @@ go build -o keshk .
 
 ## Docker и GitHub Actions
 
-При сваком пушу на `main` / `master` или креирању `v*` ознаке (или ручно преко *Actions*), GitHub Actions (`.github/workflows/docker.yml`) аутоматски гради вишеархитектурну слику (`linux/amd64` и `linux/arm64`) на `distroless:nonroot` основи и објављује је на **GitHub Container Registry** (`ghcr.io/<корисник>/keshk:latest`).
+Скрипта `docker-build.ps1` (односно `docker-build.sh` на Linux-у) ради све у једном кораку: сачува измене уз српски датум и време у поруци комита (`ДД.ММ.ГГГГ. ЧЧ:ММ:СС`, нпр. `02.11.2026. 03:18:00`), формира таг у српском формату (`ДД.ММ.ГГГГ_ЧЧ-ММ-СС`, нпр. `02.11.2026_03-18-00`) и пошаље и грану и таг **и на `gitcrn` и на `github`**.
 
-Повезивање и покретање преко **GitHub CLI (`gh`)**:
+Слање тага аутоматски покреће GitHub Actions (`.github/workflows/docker.yml`), који гради вишеархитектурну слику (`linux/amd64` и `linux/arm64`) на `distroless:nonroot` основи и објављује је на **GitHub Container Registry** као `:ДД.ММ.ГГГГ_ЧЧ-ММ-СС` и `:latest`:
+
+```powershell
+.\docker-build.ps1                   # commit ('02.11.2026. 03:18:00') + таг + push на gitcrn и github
+.\docker-build.ps1 "Опис измене"     # исто са прилагођеном commit поруком
+.\docker-build.ps1 -Local            # локални билд keshk:<датум_време> и keshk:latest
+```
+
+Прво повезивање са GitHub-ом преко **GitHub CLI (`gh`)**:
 
 ```powershell
 gh auth login -s write:packages
-gh repo create keshk --private --source=. --remote=github --push
+gh repo create keshk --private --source=. --remote=github
+.\docker-build.ps1
 gh run watch
 ```
 

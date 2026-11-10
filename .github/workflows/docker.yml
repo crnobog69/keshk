@@ -1,0 +1,71 @@
+name: Docker слика
+
+on:
+  push:
+    tags:
+      - '[0-9][0-9].[0-9][0-9].[0-9][0-9][0-9][0-9]_*'
+      - '[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]_*'
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    name: Изградња и објава Docker слике
+    runs-on: ubuntu-latest
+    steps:
+      - name: Преузимање изворног кода
+        uses: actions/checkout@v6
+
+      - name: Одређивање ознаке (датум + време)
+        id: build_tag
+        run: |
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="$(TZ=Europe/Belgrade date +'%d.%m.%Y_%H-%M-%S')"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Ознака Docker слике: ${TAG}"
+
+      - name: Подешавање Docker Buildx-а
+        uses: docker/setup-buildx-action@v4
+
+      - name: Пријава на GitHub Container Registry (ghcr.io)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Метаподаци и ознаке слике
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.build_tag.outputs.tag }}
+
+      - name: Изградња и објава (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="sr-Cyrl" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Keshk &gt;&gt; месечни буџет</title>
+  <meta name="description" content="Keshk – минималистичка апликација за праћење месечног буџета, Кешкића и трошкова у више валута.">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="theme-color" content="#09090b">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="https://sen.crnbg.org/f/aTY0IELGyNTh6T">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    (function () {
+      var t = localStorage.getItem('keshk-theme') || 'dark';
+      document.documentElement.classList.toggle('dark', t === 'dark');
+    })();
+  </script>
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <!-- ============ Splash ============ -->
+  <div id="splash" class="splash" aria-hidden="true">
+    <span class="brand-mark brand-mark-lg brand-mark-img pulse"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
+  </div>
+
+  <!-- ============ Пријава и регистрација ============ -->
+  <main id="login-view" class="login" hidden>
+    <form id="login-form" class="card login-card" autocomplete="on" novalidate>
+      <div class="brand brand-lg">
+        <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
+        <span>Keshk</span>
+      </div>
+      <div class="login-copy">
+        <h1>Добродошао назад</h1>
+        <p class="muted">Пријави се да пратиш своје Кешкиће.</p>
+      </div>
+      <div id="login-notice" class="login-notice" role="status" hidden>
+        <i data-lucide="lock"></i>
+        <span id="login-notice-text">Мораш бити пријављен да би видео овај налог.</span>
+      </div>
+      <label class="field">
+        <span class="label">Корисничко име</span>
+        <input id="login-username" class="input" name="username" autocomplete="username" required>
+      </label>
+      <label class="field">
+        <span class="label">Лозинка</span>
+        <input id="login-password" class="input" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="form-error" role="alert" hidden></p>
+      <button id="login-submit" class="btn btn-primary btn-block btn-lg" type="submit">
+        <span>Пријави се</span><i data-lucide="arrow-right"></i>
+      </button>
+      <div class="login-alt">
+        <button id="btn-show-register" class="btn btn-outline btn-block" type="button">
+          <i data-lucide="key-round"></i><span>Имате код за регистрацију?</span>
+        </button>
+      </div>
+    </form>
+
+    <!-- ============ Позивни код + Onboarding ============ -->
+    <div id="register-card" class="card login-card onboarding-card" hidden>
+      <div class="ob-top">
+        <div class="brand brand-lg">
+          <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
+          <span>Keshk</span>
+        </div>
+        <span id="ob-step-badge" class="badge badge-outline">Позивница</span>
+      </div>
+
+      <div id="ob-progress" class="ob-progress" aria-hidden="true" hidden>
+        <span id="ob-bar-1" class="ob-bar is-active"></span>
+        <span id="ob-bar-2" class="ob-bar"></span>
+      </div>
+
+      <!-- Корак 0: Унос кода за регистрацију -->
+      <form id="reg-code-form" class="ob-step" autocomplete="off" novalidate>
+        <div class="login-copy">
+          <h1>Имате код за регистрацију?</h1>
+          <p class="muted">Унеси једнократни код који ти је послао администратор.</p>
+        </div>
+        <label class="field">
+          <span class="label">Код за регистрацију</span>
+          <input id="reg-code" class="input input-code" name="invite-code" placeholder="XXXX-XXXX-XXXX" maxlength="16" spellcheck="false" autocapitalize="characters" autocomplete="off" required>
+        </label>
+        <p id="reg-code-error" class="form-error" role="alert" hidden></p>
+        <div class="ob-actions">
+          <button id="btn-back-to-login" class="btn btn-outline" type="button">
+            <i data-lucide="arrow-left"></i><span>Пријава</span>
+          </button>
+          <button id="reg-code-submit" class="btn btn-primary" type="submit">
+            <span>Настави</span><i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </form>
+
+      <!-- Корак 1/2: Корисничко име и лозинка -->
+      <form id="reg-account-form" class="ob-step" autocomplete="off" novalidate hidden>
+        <div class="login-copy">
+          <h1>Креирај свој налог</h1>
+          <p class="muted">Изабери корисничко име и постави своју лозинку.</p>
+        </div>
+        <label class="field">
+          <span class="label">Корисничко име</span>
+          <div class="input-prefix-wrap">
+            <span class="input-prefix" aria-hidden="true">@</span>
+            <input id="reg-username" class="input input-with-prefix" placeholder="korisnik" maxlength="24" spellcheck="false" autocapitalize="none" autocomplete="username" required>
+          </div>
+          <span class="field-hint"><i data-lucide="at-sign"></i>Латиница a–z, бројеви, тачка, цртица или доња црта.</span>
+        </label>
+        <label class="field">
+          <span class="label">Име за приказ <span class="muted">(опционо)</span></span>
+          <input id="reg-display-name" class="input" placeholder="нпр. Марко" maxlength="40" autocomplete="name">
+        </label>
+        <label class="field">
+          <span class="label">Лозинка</span>
+          <input id="reg-password" class="input" type="password" placeholder="Најмање 6 знакова" minlength="6" maxlength="128" autocomplete="new-password" required>
+        </label>
+        <label class="field">
+          <span class="label">Потврди лозинку</span>
+          <input id="reg-password-confirm" class="input" type="password" placeholder="Понови лозинку" minlength="6" maxlength="128" autocomplete="new-password" required>
+        </label>
+        <p id="reg-account-error" class="form-error" role="alert" hidden></p>
+        <div class="ob-actions">
+          <button id="btn-ob-back-code" class="btn btn-outline" type="button">
+            <i data-lucide="arrow-left"></i><span>Назад</span>
+          </button>
+          <button id="reg-account-next" class="btn btn-primary" type="submit">
+            <span>Даље</span><i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </form>
+
+      <!-- Корак 2/2: Профилна слика, позадина и опис -->
+      <form id="reg-profile-form" class="ob-step" autocomplete="off" novalidate hidden>
+        <div class="login-copy">
+          <h1>Уреди свој налог</h1>
+          <p class="muted">Додај профилну слику и позадину налога. Све можеш изменити и касније.</p>
+        </div>
+
+        <div class="prof-preview ob-prof-preview">
+          <div class="prof-preview-banner" id="reg-preview-banner"></div>
+          <div class="ob-preview-row">
+            <div class="prof-preview-avatar" id="reg-preview-avatar">
+              <i data-lucide="user"></i>
+            </div>
+            <div class="ob-preview-names">
+              <div class="ob-preview-name" id="reg-preview-name">Нови корисник</div>
+              <div class="ob-preview-handle" id="reg-preview-handle">@korisnik</div>
+            </div>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="label">Профилна слика <span class="muted">(линк)</span></span>
+          <input id="reg-avatar" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="label">Позадина налога <span class="muted">(линк)</span></span>
+          <input id="reg-banner" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="label">Кратак опис <span class="muted">(опционо)</span></span>
+          <textarea id="reg-bio" class="input textarea" rows="2" maxlength="240" placeholder="Нешто кратко о теби…"></textarea>
+        </label>
+        <p id="reg-profile-error" class="form-error" role="alert" hidden></p>
+        <div class="ob-actions">
+          <button id="btn-ob-back-account" class="btn btn-outline" type="button">
+            <i data-lucide="arrow-left"></i><span>Назад</span>
+          </button>
+          <button id="reg-finish-submit" class="btn btn-primary" type="submit">
+            <i data-lucide="check"></i><span>Заврши регистрацију</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <footer class="site-footer">
+      <a href="https://git.crnbg.org/vltc/keshk" target="_blank" rel="noopener noreferrer"><i data-lucide="git-branch"></i><span>Made by vltc</span></a>
+    </footer>
+  </main>
+
+  <!-- ============ Апликација ============ -->
+  <div id="app-view" hidden>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a class="brand" href="/" aria-label="Keshk почетна" draggable="false">
+          <span class="brand-mark brand-mark-img"><img class="brand-logo" src="https://sen.crnbg.org/f/aTY0IELGyNTh6T" alt="Keshk" draggable="false"></span>
+          <span>Keshk</span>
+        </a>
+        <div class="topbar-actions">
+          <button id="btn-new" class="btn btn-primary btn-sm" type="button" aria-label="Нови унос">
+            <i data-lucide="plus"></i><span>Ново</span><kbd>N</kbd>
+          </button>
+          <button id="btn-lists" class="btn btn-outline btn-sm" type="button" aria-label="Листе за куповину">
+            <i data-lucide="list-checks"></i><span class="hide-mobile">Листе</span><kbd>L</kbd>
+          </button>
+          <div class="dropdown" id="settings-dropdown">
+            <button id="settings-trigger" class="topbar-avatar-btn" type="button" aria-label="Налог и подешавања" aria-haspopup="menu" aria-expanded="false" title="Налог и подешавања">
+              <span class="topbar-avatar" id="topbar-avatar">
+                <i data-lucide="user"></i>
+              </span>
+            </button>
+            <div class="dropdown-menu" id="settings-menu" hidden>
+              <button class="dropdown-header dropdown-header-btn" type="button" id="menu-profile-header">
+                <span class="dropdown-user-name" id="menu-user-name">admin</span>
+                <span class="dropdown-user-handle" id="menu-user-handle">@admin</span>
+              </button>
+              <div class="dropdown-sep"></div>
+              <button class="dropdown-item" type="button" id="menu-account">
+                <i data-lucide="user"></i><span>Налог</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-settings">
+                <i data-lucide="settings"></i><span>Подешавања</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-admin" hidden>
+                <i data-lucide="shield"></i><span>Админ</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-export">
+                <i data-lucide="download"></i><span>Извези податке</span>
+              </button>
+              <button class="dropdown-item" type="button" id="menu-import">
+                <i data-lucide="upload"></i><span>Увези податке</span>
+              </button>
+              <input type="file" id="import-input" accept="application/json,.json" hidden>
+              <button class="dropdown-item" type="button" id="menu-theme">
+                <i data-lucide="sun" class="icon-sun"></i><i data-lucide="moon" class="icon-moon"></i><span id="menu-theme-label">Светла тема</span>
+              </button>
+              <div class="dropdown-sep"></div>
+              <button class="dropdown-item is-danger" type="button" id="menu-logout">
+                <i data-lucide="log-out"></i><span>Одјави се</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main id="view-dashboard" class="container main">
+      <h1 class="sr-only">Месечни буџет</h1>
+
+      <!-- Месечни мењач -->
+      <nav class="month-switch" aria-label="Избор месеца">
+        <button id="month-prev" class="btn btn-outline btn-icon" type="button" aria-label="Претходни месец"><i data-lucide="chevron-left"></i></button>
+        <button id="month-label" class="month-label" type="button" title="Иди на текући месец">
+          <i data-lucide="calendar"></i><span id="month-text">—</span>
+        </button>
+        <button id="month-next" class="btn btn-outline btn-icon" type="button" aria-label="Следећи месец"><i data-lucide="chevron-right"></i></button>
+      </nav>
+
+      <!-- Херо преглед -->
+      <section id="hero" class="card hero">
+        <div class="hero-top">
+          <div class="hero-heading">
+            <span class="eyebrow">Укупно преостало</span>
+            <span id="balance-keshkic-name" class="muted small" hidden></span>
+          </div>
+          <div class="hero-actions">
+            <span id="rate-badge" class="badge badge-outline" title="Тренутни курс">
+              <i data-lucide="arrow-left-right"></i><span id="rate-text">курс…</span>
+            </span>
+            <button id="balance-settings" class="btn btn-ghost btn-icon btn-sm" type="button" aria-label="Изабери Кешкић за приказ" aria-haspopup="dialog" aria-controls="balance-dialog" title="Изабери Кешкић за приказ">
+              <i data-lucide="settings"></i>
+            </button>
+          </div>
+        </div>
+        <div class="balance" aria-live="polite">
+          <span id="balance-value">0,00</span><span class="balance-cur">RSD</span>
+        </div>
+        <p id="balance-hint" class="hint" hidden></p>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="progress">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <div class="progress-meta">
+          <span id="progress-spent">—</span>
+          <span id="progress-total">—</span>
+        </div>
+      </section>
+
+      <!-- Секција Кешкићи -->
+      <section class="card keshkici-section" aria-labelledby="keshkici-heading">
+        <div class="card-head">
+          <h2 id="keshkici-heading">Кешкићи</h2>
+        </div>
+        <div id="keshkici-grid" class="keshkici-grid"></div>
+      </section>
+
+      <!-- Главни распоред: Трошкови + Историја -->
+      <section class="layout">
+        <div class="card list-card">
+          <div class="card-head">
+            <div>
+              <h2>Трошкови и уплате</h2>
+              <div id="filter-indicator" class="filter-indicator" hidden>
+                <span>Филтрирано по: <b id="filter-name">—</b></span>
+                <button id="filter-clear" class="btn btn-ghost btn-xs" type="button"><i data-lucide="x"></i>Прикажи све</button>
+              </div>
+            </div>
+          </div>
+          <div id="tx-list" class="tx-list"></div>
+        </div>
+
+        <aside class="card history-card" aria-label="Историја">
+          <div class="card-head">
+            <h2>Последњих 6 месеци</h2>
+          </div>
+          <div id="history" class="history"></div>
+          <div class="legend">
+            <span><i class="dot dot-spent"></i>Потрошено</span>
+            <span><i class="dot dot-avail"></i>Кешкићи</span>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <!-- ============ Страница: Све листе (/liste) ============ -->
+    <main id="view-lists" class="container main lists-page" hidden>
+      <div class="page-head">
+        <div>
+          <button class="link-back" id="back-from-lists" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+          <h1 class="page-title"><i data-lucide="list-checks"></i><span>Листе за куповину</span></h1>
+          <p class="muted small">Све листе повезане са твојим Кешкићима. Сваки производ може имати цену, а укупан износ лако одузимаш са буџета.</p>
+        </div>
+        <button id="btn-new-list-page" class="btn btn-primary btn-sm" type="button">
+          <i data-lucide="plus"></i><span>Нова листа</span>
+        </button>
+      </div>
+
+      <div id="lists-grid" class="lists-page-grid"></div>
+    </main>
+
+    <!-- ============ Страница: Детаљ листе (/liste/:id) ============ -->
+    <main id="view-list-detail" class="container main list-detail-page" hidden>
+      <button class="link-back" id="btn-back-lists" type="button"><i data-lucide="arrow-left"></i><span>Све листе</span></button>
+
+      <div class="card list-page-card">
+        <div class="list-page-card-head">
+          <div class="list-page-title-wrap">
+            <h1 id="page-list-title" class="page-title">—</h1>
+            <div id="page-list-meta" class="list-detail-meta"></div>
+          </div>
+          <div class="list-page-actions">
+            <button id="page-list-edit-btn" class="btn btn-outline btn-sm" type="button"><i data-lucide="pencil"></i><span>Измени</span></button>
+            <button id="page-list-delete-btn" class="btn btn-outline btn-sm is-danger-btn" type="button"><i data-lucide="trash-2"></i><span>Обриши</span></button>
+          </div>
+        </div>
+
+        <div id="page-list-items" class="list-items page-list-items"></div>
+
+        <form id="page-add-item-form" class="add-item-row page-add-item-row" novalidate>
+          <input id="page-add-item-name" class="input" placeholder="Додај производ (нпр. млеко, кафа, хлеб)…" maxlength="120" autocomplete="off" required>
+          <input id="page-add-item-price" class="input input-sm" inputmode="decimal" placeholder="Цена (RSD)">
+          <button class="btn btn-primary btn-icon btn-sm" type="submit" aria-label="Додај производ"><i data-lucide="plus"></i></button>
+        </form>
+
+        <div class="list-page-foot">
+          <div class="list-detail-summary" id="page-list-summary"></div>
+          <div class="list-charge-actions">
+            <button id="page-list-uncharge-btn" class="btn btn-outline btn-sm" type="button" hidden><i data-lucide="undo-2"></i><span>Поништи одузимање</span></button>
+            <button id="page-list-charge-btn" class="btn btn-primary btn-sm" type="button"><i data-lucide="wallet"></i><span>Одузми од Кешкића</span></button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============ Страница: Налог корисника (/u/@korisnik) ============ -->
+    <main id="view-profile" class="container main profile-page" hidden>
+      <button class="link-back" id="back-from-profile" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+      <div id="profile-container"></div>
+    </main>
+
+    <!-- ============ Страница: Подешавања (/podesavanja) ============ -->
+    <main id="view-settings" class="container main settings-page" hidden>
+      <div class="page-head">
+        <div>
+          <button class="link-back" id="back-from-settings" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+          <h1 class="page-title"><i data-lucide="settings"></i><span>Подешавања</span></h1>
+          <p class="muted small">Управљање налогом, лозинком, подацима и захтевом за брисање налога.</p>
+        </div>
+      </div>
+
+      <section class="card" aria-labelledby="settings-account-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="settings-account-heading">Налог и безбедност</h2>
+            <p class="muted small">Измени податке налога, промени лозинку или сачувај резервну копију.</p>
+          </div>
+        </div>
+        <div class="settings-list">
+          <div class="settings-item">
+            <div class="settings-item-icon"><i data-lucide="pencil"></i></div>
+            <div class="settings-item-main">
+              <div class="settings-item-title">Уреди налог</div>
+              <div class="settings-item-desc">Име за приказ, кратак опис, профилна слика и позадина налога.</div>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settings-edit-account" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="pencil"></i><span>Уреди налог</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-icon"><i data-lucide="key-round"></i></div>
+            <div class="settings-item-main">
+              <div class="settings-item-title">Лозинка</div>
+              <div class="settings-item-desc">Промени лозинку за пријаву на налог (аутоматски одјављује све остале уређаје).</div>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settings-change-pw" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="key"></i><span>Лозинка</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-icon"><i data-lucide="database"></i></div>
+            <div class="settings-item-main">
+              <div class="settings-item-title">Резервна копија података</div>
+              <div class="settings-item-desc">Извези своје Кешкиће, трошкове и листе у JSON датотеку или увези постојећу копију.</div>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settings-export" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="download"></i><span>Извези</span>
+              </button>
+              <button id="settings-import" class="btn btn-outline btn-sm" type="button">
+                <i data-lucide="upload"></i><span>Увези</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="settings-clear-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="settings-clear-heading">Брисање података</h2>
+            <p class="muted small">Обриши изабране податке са свог налога. Сам налог, корисничко име и лозинка остају нетакнути.</p>
+          </div>
+        </div>
+        <div class="settings-clear-box">
+          <div class="settings-checks">
+            <label class="settings-check-card">
+              <input type="checkbox" id="clear-opt-lists" checked>
+              <div class="settings-check-copy">
+                <span class="settings-check-title">Листе за куповину</span>
+                <span class="settings-check-sub">Све листе за куповину и производи у њима.</span>
+              </div>
+            </label>
+            <label class="settings-check-card" id="clear-opt-txs-card">
+              <input type="checkbox" id="clear-opt-txs">
+              <div class="settings-check-copy">
+                <span class="settings-check-title">Трошкови</span>
+                <span class="settings-check-sub">Све забележене трансакције кроз све месеце.</span>
+              </div>
+            </label>
+            <label class="settings-check-card">
+              <input type="checkbox" id="clear-opt-keshkici">
+              <div class="settings-check-copy">
+                <span class="settings-check-title">Кешкићи</span>
+                <span class="settings-check-sub">Сви месечни Кешкићи — аутоматски укључује и све трошкове и уплате.</span>
+              </div>
+            </label>
+          </div>
+          <p id="clear-data-error" class="form-error" role="alert" hidden></p>
+          <div class="settings-clear-foot">
+            <span class="muted small">Ова радња се не може поништити. Саветујемо да претходно извезеш податке.</span>
+            <button id="btn-clear-data" class="btn btn-outline btn-sm is-danger-btn" type="button">
+              <i data-lucide="trash-2"></i><span>Обриши податке</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card settings-danger-card" aria-labelledby="settings-delete-acc-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="settings-delete-acc-heading">Брисање налога</h2>
+            <p class="muted small">За трајно брисање налога обрати се на <a class="inline-mail-link" href="mailto:admin@crnbg.org">admin@crnbg.org</a> уз једнократни потврдни код.</p>
+          </div>
+        </div>
+        <div id="settings-deletion-body" class="settings-deletion-body"></div>
+      </section>
+    </main>
+
+    <!-- ============ Страница: Админ панел (/admin) ============ -->
+    <main id="view-admin" class="container main admin-page" hidden>
+      <div class="page-head">
+        <div>
+          <button class="link-back" id="back-from-admin" type="button"><i data-lucide="arrow-left"></i><span>Контролна табла</span></button>
+          <h1 class="page-title"><i data-lucide="shield"></i><span>Админ панел</span></h1>
+          <p class="muted small">Управљање корисничким налозима и једнократним кодовима за регистрацију.</p>
+        </div>
+        <button id="btn-generate-invite" class="btn btn-primary btn-sm" type="button">
+          <i data-lucide="plus"></i><span>Генериши код</span>
+        </button>
+      </div>
+
+      <section class="stats" aria-label="Статистика налога">
+        <div class="card stat">
+          <div class="stat-head">
+            <span class="stat-icon"><i data-lucide="users"></i></span>
+            <span class="stat-label">Регистровани налози</span>
+          </div>
+          <div class="stat-value" id="admin-stat-users">1</div>
+          <div class="stat-sub" id="admin-stat-users-sub">1 администратор</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-head">
+            <span class="stat-icon is-income"><i data-lucide="key-round"></i></span>
+            <span class="stat-label">Активни кодови</span>
+          </div>
+          <div class="stat-value" id="admin-stat-active-codes">0</div>
+          <div class="stat-sub" id="admin-stat-active-sub">спремни за регистрацију</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-head">
+            <span class="stat-icon"><i data-lucide="user-check"></i></span>
+            <span class="stat-label">Искоришћени кодови</span>
+          </div>
+          <div class="stat-value" id="admin-stat-used-codes">0</div>
+          <div class="stat-sub" id="admin-stat-used-sub">завршене регистрације</div>
+        </div>
+      </section>
+
+      <section id="admin-deletions-card" class="card settings-danger-card" aria-labelledby="admin-deletions-heading" hidden>
+        <div class="card-head">
+          <div>
+            <h2 id="admin-deletions-heading">Захтеви за брисање налога</h2>
+            <p class="muted small">Корисници који су генерисали потврдни код за брисање налога. Упореди ID, корисничко име и КОД из примљене поруке пре брисања.</p>
+          </div>
+        </div>
+        <div id="admin-deletions-list" class="admin-list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="admin-invites-heading">
+        <div class="card-head">
+          <div>
+            <h2 id="admin-invites-heading">Кодови за регистрацију</h2>
+            <p class="muted small">Пошаљи код позваном кориснику. Сваки код важи за једну регистрацију.</p>
+          </div>
+          <button id="btn-generate-invite-card" class="btn btn-outline btn-sm" type="button">
+            <i data-lucide="key-round"></i><span>Нови код</span>
+          </button>
+        </div>
+        <div id="admin-invites-list" class="admin-list"></div>
+        <div id="admin-invites-pager" class="admin-pager" hidden>
+          <span id="admin-invites-pager-info" class="muted small">Страна 1 од 1</span>
+          <div class="admin-pager-btns">
+            <button id="admin-invites-prev" class="btn btn-outline btn-sm" type="button">
+              <i data-lucide="chevron-left"></i><span>Претходна</span>
+            </button>
+            <button id="admin-invites-next" class="btn btn-outline btn-sm" type="button">
+              <span>Следећа</span><i data-lucide="chevron-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="admin-users-heading">
+        <div class="card-head admin-users-head">
+          <div>
+            <h2 id="admin-users-heading">Регистровани налози</h2>
+            <p id="admin-users-sub" class="muted small">Само први налог има администраторска права.</p>
+          </div>
+          <div class="admin-search-wrap">
+            <span class="admin-search-icon" aria-hidden="true"><i data-lucide="search"></i></span>
+            <input id="admin-user-search" class="input input-sm admin-search-input" type="search" placeholder="Претражи (@име, назив, #ID)…" maxlength="60" autocomplete="off" spellcheck="false" aria-label="Претрага налога">
+            <button id="admin-user-search-clear" class="admin-search-clear" type="button" aria-label="Поништи претрагу" title="Поништи претрагу" hidden>
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </div>
+        <div id="admin-users-list" class="admin-list"></div>
+        <div id="admin-users-pager" class="admin-pager" hidden>
+          <span id="admin-users-pager-info" class="muted small">Страна 1 од 1</span>
+          <div class="admin-pager-btns">
+            <button id="admin-users-prev" class="btn btn-outline btn-sm" type="button">
+              <i data-lucide="chevron-left"></i><span>Претходна</span>
+            </button>
+            <button id="admin-users-next" class="btn btn-outline btn-sm" type="button">
+              <span>Следећа</span><i data-lucide="chevron-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a href="https://git.crnbg.org/vltc/keshk" target="_blank" rel="noopener noreferrer"><i data-lucide="git-branch"></i><span>Made by vltc</span></a>
+    </footer>
+
+    <!-- Мобилно брзо дугме -->
+    <button id="fab" class="fab" type="button" aria-label="Нови унос" title="Нови унос">
+      <i data-lucide="plus"></i>
+    </button>
+  </div>
+
+  <dialog id="keshkic-details-dialog" class="dialog dialog-sm" aria-labelledby="keshkic-details-title">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h3 id="keshkic-details-title">Детаљи Кешкића</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <dl id="keshkic-details-body" class="k-details-list"></dl>
+    </div>
+  </dialog>
+
+  <dialog id="balance-dialog" class="dialog dialog-sm" aria-labelledby="balance-dialog-title">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h3 id="balance-dialog-title">Избор Кешкића</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <div id="balance-keshkici" class="balance-options" role="group" aria-label="Кешкић за приказ"></div>
+    </div>
+  </dialog>
+
+  <!-- ============ Јединствени дијалог: Нова трансакција ============ -->
+  <dialog id="tx-dialog" class="dialog" aria-labelledby="modal-title">
+    <form id="tx-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="modal-title">Нова трансакција</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+
+      <!-- Преклопник Трошак / Уплата / Кешкић -->
+      <div class="segmented" id="modal-segmented" role="radiogroup" aria-label="Врста уноса">
+        <input type="radio" name="modal-kind" id="kind-expense" value="expense" checked>
+        <label for="kind-expense"><i data-lucide="arrow-up-right"></i><span>Трошак</span></label>
+        <input type="radio" name="modal-kind" id="kind-deposit" value="deposit">
+        <label for="kind-deposit"><i data-lucide="arrow-down-left"></i><span>Уплата</span></label>
+        <input type="radio" name="modal-kind" id="kind-keshkic" value="keshkic">
+        <label for="kind-keshkic"><i data-lucide="wallet"></i><span>Кешкић</span></label>
+      </div>
+
+      <!-- Поље: Избор Кешкића (видљиво за Трошак и Уплату) -->
+      <label class="field" id="field-keshkic-select">
+        <span class="label" id="label-keshkic-select">Из ког Кешкића се троши?</span>
+        <select id="tx-keshkic" class="input select" required></select>
+      </label>
+
+      <!-- Назив Кешкића (видљиво само за Кешкић) -->
+      <label class="field" id="field-keshkic-title" hidden>
+        <span class="label">Назив Кешкића</span>
+        <input id="keshkic-title" class="input" placeholder="нпр. Мама, За игре, Уштеђевина…" maxlength="60" autocomplete="off">
+      </label>
+
+      <!-- Износ + Валута -->
+      <div class="field">
+        <label class="label" for="tx-amount" id="label-amount">Износ</label>
+        <div class="amount-row">
+          <input id="tx-amount" class="input input-amount" inputmode="decimal" placeholder="0,00" autocomplete="off" required>
+          <div class="currency-pills" role="radiogroup" aria-label="Валута">
+            <input type="radio" name="currency" id="cur-RSD" value="RSD" checked><label for="cur-RSD">RSD</label>
+            <input type="radio" name="currency" id="cur-EUR" value="EUR"><label for="cur-EUR">€</label>
+            <input type="radio" name="currency" id="cur-USD" value="USD"><label for="cur-USD">$</label>
+          </div>
+        </div>
+        <span class="field-hint"><i data-lucide="info"></i>Тачка за хиљаде, зарез за децимале — нпр. <b>500.000,00</b> или <b>12,50</b></span>
+      </div>
+
+      <!-- Курсна конверзија за стране валуте -->
+      <div id="fx-row" class="fx-row" hidden>
+        <div class="fx-rate">
+          <span class="muted">1 <span id="fx-cur">EUR</span> =</span>
+          <input id="tx-rate" class="input input-sm" inputmode="decimal" aria-label="Курс">
+          <span class="muted">RSD</span>
+        </div>
+        <div class="fx-result"><i data-lucide="equal-approximately"></i><span id="fx-result">0,00 RSD</span></div>
+      </div>
+
+      <!-- Опис трошка / од кога је уплата (видљиво за Трошак и Уплату) -->
+      <label class="field" id="field-tx-title">
+        <span class="label" id="label-tx-title">Опис</span>
+        <input id="tx-title" class="input" placeholder="нпр. кафа, Steam, превоз…" maxlength="120" autocomplete="off">
+      </label>
+
+      <!-- Датум (видљиво за Трошак и Уплату) -->
+      <label class="field" id="field-tx-date">
+        <span class="label">Датум</span>
+        <input id="tx-date" class="input" type="date" required>
+      </label>
+
+      <!-- Подразумевани Кешкић чекбокс (видљиво само за Кешкић) -->
+      <label class="checkbox-row" id="field-keshkic-default" hidden>
+        <input type="checkbox" id="keshkic-is-default">
+        <span>Постави као подразумевани Кешкић за овај месец</span>
+      </label>
+
+      <p id="tx-error" class="form-error" role="alert" hidden></p>
+
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="tx-submit" class="btn btn-primary" type="submit">
+          <i data-lucide="check"></i><span id="tx-submit-label">Сачувај трошак</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ Дијалог: Уреди налог ============ -->
+  <dialog id="profile-dialog" class="dialog" aria-labelledby="profile-dialog-title">
+    <form id="profile-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="profile-dialog-title">Уреди налог</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="prof-preview">
+        <div class="prof-preview-banner" id="prof-preview-banner"></div>
+        <div class="prof-preview-avatar" id="prof-preview-avatar">
+          <i data-lucide="user"></i>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="label">Име за приказ</span>
+        <input id="prof-display-name" class="input" placeholder="нпр. Мартин" maxlength="40" autocomplete="off">
+      </label>
+
+      <label class="field">
+        <span class="label">Опис</span>
+        <textarea id="prof-bio" class="input textarea" rows="3" maxlength="240" placeholder="Нешто кратко о теби…"></textarea>
+      </label>
+
+      <label class="field">
+        <span class="label">Профилна слика (линк)</span>
+        <input id="prof-avatar" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+      </label>
+
+      <label class="field">
+        <span class="label">Позадина налога (линк)</span>
+        <input id="prof-banner" class="input" type="url" placeholder="https://…" maxlength="500" autocomplete="off">
+        <span class="field-hint"><i data-lucide="link"></i>Директан линк до слике са интернета. Остави празно за уклањање.</span>
+      </label>
+
+      <p id="prof-error" class="form-error" role="alert" hidden></p>
+
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="prof-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span>Сачувај налог</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ Дијалог: Промена лозинке ============ -->
+  <dialog id="password-dialog" class="dialog dialog-sm" aria-labelledby="password-dialog-title">
+    <form id="password-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="password-dialog-title">Промена лозинке</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <label class="field">
+        <span class="label">Тренутна лозинка</span>
+        <input id="pw-current" class="input" type="password" autocomplete="current-password" required>
+      </label>
+      <label class="field">
+        <span class="label">Нова лозинка</span>
+        <input id="pw-next" class="input" type="password" autocomplete="new-password" minlength="6" required>
+      </label>
+      <p id="pw-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="pw-save" class="btn btn-primary" type="submit"><i data-lucide="key"></i><span>Промени лозинку</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ Дијалог: Нова/Измена листе ============ -->
+  <dialog id="list-dialog" class="dialog dialog-sm" aria-labelledby="list-dialog-title">
+    <form id="list-form" class="dialog-body" novalidate>
+      <div class="dialog-head">
+        <h3 id="list-dialog-title">Нова листа</h3>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+      <label class="field">
+        <span class="label">Назив листе</span>
+        <input id="list-title" class="input" placeholder="нпр. Недељна куповина" maxlength="80" autocomplete="off" required>
+      </label>
+      <label class="field">
+        <span class="label">Кешкић</span>
+        <select id="list-keshkic" class="input select"></select>
+      </label>
+      <label class="field">
+        <span class="label">Рок (опционо)</span>
+        <input id="list-due" class="input" type="date">
+      </label>
+      <p id="list-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-foot">
+        <button class="btn btn-outline" type="button" data-close>Откажи</button>
+        <button id="list-save" class="btn btn-primary" type="submit"><i data-lucide="check"></i><span id="list-save-label">Сачувај</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ Дијалог: QR код налога ============ -->
+  <dialog id="qr-dialog" class="dialog dialog-sm" aria-labelledby="qr-dialog-title">
+    <div class="dialog-body qr-dialog-body">
+      <div class="dialog-head">
+        <div>
+          <h3 id="qr-dialog-title">QR код налога</h3>
+          <p id="qr-user-label" class="muted small">@korisnik</p>
+        </div>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close aria-label="Затвори"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="qr-box">
+        <img id="qr-image" alt="QR код налога" draggable="false">
+      </div>
+
+      <div class="qr-url-pill" id="qr-user-url">—</div>
+
+      <div class="dialog-foot">
+        <button id="qr-copy-link" class="btn btn-outline" type="button">
+          <i data-lucide="link-2"></i><span>Копирај линк</span>
+        </button>
+        <a id="qr-download-png" class="btn btn-primary" href="#" download>
+          <i data-lucide="download"></i><span>Преузми PNG</span>
+        </a>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toaster" class="toaster" aria-live="polite"></div>
+</body>
+</html>

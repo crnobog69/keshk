@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.env.*
+.neon
+node_modules
+data
+*.db
+*.db-*
+*.exe
+*.ps1
+*.sh
+README.md
+keshk
+keshk-rpi5-arm64

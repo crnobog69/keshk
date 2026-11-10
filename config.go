@@ -1,0 +1,93 @@
+package main
+
+import (
+	"crypto/rand"
+	"log"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/joho/godotenv"
+)
+
+// Config holds all runtime configuration loaded from .env / environment.
+type Config struct {
+	Username            string
+	Password            string
+	Secret              []byte
+	Port                string
+	DatabaseURL         string  // Neon pooled Postgres URL (PgBouncer)
+	DatabaseURLUnpooled string  // Neon директни Postgres URL (за DDL миграције)
+	DefaultKeshkic      float64 // предлог износа за месечни Кешкић
+	CookieSecure        bool
+	ResetPassword       bool               // KESHK_RESET_PASSWORD=true брише лозинку сачувану у бази
+	Seed                bool               // KESHK_SEED=true пуни празну базу пробним подацима
+	FallbackRates       map[string]float64 // RSD per 1 unit of currency
+}
+
+func loadConfig() Config {
+	if err := godotenv.Load(); err != nil {
+		log.Println("[INFO] .env није пронађен, користим променљиве окружења")
+	}
+
+	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	directURL := strings.TrimSpace(os.Getenv("DATABASE_URL_UNPOOLED"))
+	if directURL == "" {
+		directURL = dbURL
+	}
+
+	cfg := Config{
+		Username:            strings.TrimSpace(os.Getenv("KESHK_USERNAME")),
+		Password:            os.Getenv("KESHK_PASSWORD"),
+		Port:                env("PORT", "3000"),
+		DatabaseURL:         dbURL,
+		DatabaseURLUnpooled: directURL,
+		DefaultKeshkic:      envFloat("DEFAULT_KESHKIC", 5000),
+		CookieSecure:        strings.EqualFold(env("COOKIE_SECURE", "false"), "true"),
+		ResetPassword:       strings.EqualFold(env("KESHK_RESET_PASSWORD", "false"), "true"),
+		Seed:                strings.EqualFold(env("KESHK_SEED", "false"), "true"),
+		FallbackRates: map[string]float64{
+			"RSD": 1,
+			"EUR": envFloat("FALLBACK_EUR_RSD", 117.2),
+			"USD": envFloat("FALLBACK_USD_RSD", 100),
+		},
+	}
+
+	if cfg.Username == "" || cfg.Password == "" {
+		log.Fatal("[ERROR] KESHK_USERNAME и KESHK_PASSWORD морају бити постављени у .env")
+	}
+	if cfg.DatabaseURL == "" {
+		log.Fatal("[ERROR] DATABASE_URL мора бити постављен у .env (покрени `neon deploy`)")
+	}
+
+	if s := os.Getenv("SESSION_SECRET"); s != "" {
+		cfg.Secret = []byte(s)
+	} else {
+		b := make([]byte, 32)
+		_, _ = rand.Read(b)
+		cfg.Secret = b
+		log.Println("[WARN] SESSION_SECRET није постављен — сесије ће се поништити при рестарту сервера")
+	}
+
+	return cfg
+}
+
+func env(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
+}
+
+func envFloat(key string, def float64) float64 {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(strings.ReplaceAll(v, ",", "."), 64)
+	if err != nil || f <= 0 {
+		log.Printf("[WARN] %s=%q није исправан број, користим %v", key, v, def)
+		return def
+	}
+	return f
+}
